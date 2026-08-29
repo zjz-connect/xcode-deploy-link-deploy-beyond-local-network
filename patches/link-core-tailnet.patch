@@ -1,0 +1,643 @@
+diff --git a/ios/installationproxy/installationproxy.go b/ios/installationproxy/installationproxy.go
+index 8a70730..ed3a8ed 100644
+--- a/ios/installationproxy/installationproxy.go
++++ b/ios/installationproxy/installationproxy.go
+@@ -14,0 +15 @@ const serviceName = "com.apple.mobile.installation_proxy"
++const shimServiceName = "com.apple.mobile.installation_proxy.shim.remote"
+@@ -65 +66,7 @@ func New(device ios.DeviceEntry) (*Connection, error) {
+-	deviceConn, err := ios.ConnectToService(device, serviceName)
++	var deviceConn ios.DeviceConnectionInterface
++	var err error
++	if device.SupportsRsd() {
++		deviceConn, err = ios.ConnectToShimService(device, shimServiceName)
++	} else {
++		deviceConn, err = ios.ConnectToService(device, serviceName)
++	}
+diff --git a/ios/rsd.go b/ios/rsd.go
+index 5c9e301..e1c9a8a 100644
+--- a/ios/rsd.go
++++ b/ios/rsd.go
+@@ -155,0 +156,4 @@ func (r RsdHandshakeResponse) GetPort(service string) int {
++	shim := fmt.Sprintf("%s.shim.remote", service)
++	if s, ok := r.Services[shim]; ok {
++		return int(s.Port)
++	}
+diff --git a/ios/rsd_test.go b/ios/rsd_test.go
+index 5d69ad1..7f5e691 100644
+--- a/ios/rsd_test.go
++++ b/ios/rsd_test.go
+@@ -31,0 +32,7 @@ func TestGetServiceSkipsUnparseablePort(t *testing.T) {
++func TestRsdHandshakeResponseFallsBackToShim(t *testing.T) {
++	rsd := RsdHandshakeResponse{Services: map[string]RsdServiceEntry{
++		"com.apple.mobile.installation_proxy.shim.remote": {Port: 62000},
++	}}
++	assert.Equal(t, 62000, rsd.GetPort("com.apple.mobile.installation_proxy"))
++}
++
+diff --git a/ios/tunnel/codec.go b/ios/tunnel/codec.go
+index c821983..6fa94b7 100644
+--- a/ios/tunnel/codec.go
++++ b/ios/tunnel/codec.go
+@@ -4,0 +5 @@ import (
++	"encoding/base64"
+@@ -40 +41,5 @@ func (p *pairingData) Decode(e map[string]interface{}) error {
+-	if data, ok := pd["data"].([]byte); ok {
++	if raw, ok := pd["data"]; ok {
++		data, err := decodeWireBytes(raw)
++		if err != nil {
++			return fmt.Errorf("pairingData.Decode: invalid data: %w", err)
++		}
+@@ -54,0 +60,15 @@ func (p *pairingData) Decode(e map[string]interface{}) error {
++func decodeWireBytes(value interface{}) ([]byte, error) {
++	switch value := value.(type) {
++	case []byte:
++		return value, nil
++	case string:
++		decoded, err := base64.StdEncoding.DecodeString(value)
++		if err != nil {
++			return nil, err
++		}
++		return decoded, nil
++	default:
++		return nil, fmt.Errorf("expected bytes or base64 string, got %T", value)
++	}
++}
++
+@@ -225,6 +245,7 @@ func (c *cipherStream) read(p *map[string]interface{}) error {
+-		if cip, ok := streamEncr["_0"].([]byte); ok {
+-			plain, err := c.serverCipher.Open(nil, c.nonce, cip, nil)
+-			if err != nil {
+-				return err
+-			}
+-			return json.Unmarshal(plain, p)
++		cip, err := decodeWireBytes(streamEncr["_0"])
++		if err != nil {
++			return err
++		}
++		plain, err := c.serverCipher.Open(nil, c.nonce, cip, nil)
++		if err != nil {
++			return err
+@@ -231,0 +253 @@ func (c *cipherStream) read(p *map[string]interface{}) error {
++		return json.Unmarshal(plain, p)
+diff --git a/ios/tunnel/pairrecord.go b/ios/tunnel/pairrecord.go
+index 14c6c4d..31b47be 100644
+--- a/ios/tunnel/pairrecord.go
++++ b/ios/tunnel/pairrecord.go
+@@ -3,0 +4 @@ import (
++	"bytes"
+@@ -39,0 +41,7 @@ type device struct {
++type pymobiledevice3PairRecord struct {
++	HostIdentifier string `plist:"host_identifier"`
++	HostAltIRK     []byte `plist:"host_alt_irk"`
++	PrivateKey     []byte `plist:"private_key"`
++	PublicKey      []byte `plist:"public_key"`
++}
++
+@@ -61,0 +70,31 @@ func NewPairRecordManager(p string) (PairRecordManager, error) {
++// NewPairRecordManagerFromPymobiledevice3 reuses an existing pymobiledevice3
++// RemotePairing identity without copying the private key to Link Core storage.
++// The two projects use the same Ed25519 controller identity with different
++// plist field names.
++func NewPairRecordManagerFromPymobiledevice3(recordPath string) (PairRecordManager, error) {
++	content, err := os.ReadFile(recordPath)
++	if err != nil {
++		return PairRecordManager{}, fmt.Errorf("NewPairRecordManagerFromPymobiledevice3: failed to read record: %w", err)
++	}
++	var record pymobiledevice3PairRecord
++	if _, err := plist.Unmarshal(content, &record); err != nil {
++		return PairRecordManager{}, fmt.Errorf("NewPairRecordManagerFromPymobiledevice3: failed to parse record: %w", err)
++	}
++	if record.HostIdentifier == "" || len(record.HostAltIRK) != 16 || len(record.PrivateKey) != ed25519.SeedSize || len(record.PublicKey) != ed25519.PublicKeySize {
++		return PairRecordManager{}, fmt.Errorf("NewPairRecordManagerFromPymobiledevice3: incomplete remote pairing identity")
++	}
++	derivedPublicKey := ed25519.NewKeyFromSeed(record.PrivateKey)[ed25519.SeedSize:]
++	if !bytes.Equal(derivedPublicKey, record.PublicKey) {
++		return PairRecordManager{}, fmt.Errorf("NewPairRecordManagerFromPymobiledevice3: public and private keys do not match")
++	}
++	return PairRecordManager{
++		selfId: selfIdentity{
++			Identifier: record.HostIdentifier,
++			Irk:        record.HostAltIRK,
++			PrivateKey: record.PrivateKey,
++			PublicKey:  record.PublicKey,
++		},
++		peersLocation: path.Join(path.Dir(recordPath), "link-core-peers"),
++	}, nil
++}
++
+diff --git a/ios/tunnel/pairrecord_test.go b/ios/tunnel/pairrecord_test.go
+index 7737a80..9eae282 100644
+--- a/ios/tunnel/pairrecord_test.go
++++ b/ios/tunnel/pairrecord_test.go
+@@ -3,0 +4 @@ import (
++	"crypto/rand"
+@@ -38,0 +40,41 @@ func TestPairRecordManager(t *testing.T) {
++
++func TestPairRecordManagerFromPymobiledevice3(t *testing.T) {
++	tmp := t.TempDir()
++	pub, private, err := ed25519.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	record := pymobiledevice3PairRecord{
++		HostIdentifier: "A4EF18F4-2920-4ECD-9F32-94719A9B92A9",
++		HostAltIRK:     make([]byte, 16),
++		PrivateKey:     private.Seed(),
++		PublicKey:      pub,
++	}
++	encoded, err := plist.Marshal(record, plist.BinaryFormat)
++	require.NoError(t, err)
++	recordPath := path.Join(tmp, "remote.plist")
++	require.NoError(t, os.WriteFile(recordPath, encoded, 0o600))
++
++	manager, err := NewPairRecordManagerFromPymobiledevice3(recordPath)
++	require.NoError(t, err)
++	assert.Equal(t, record.HostIdentifier, manager.selfId.Identifier)
++	assert.Equal(t, record.PrivateKey, manager.selfId.PrivateKey)
++	assert.Equal(t, record.PublicKey, manager.selfId.PublicKey)
++}
++
++func TestPairRecordManagerFromPymobiledevice3RejectsMismatchedKeys(t *testing.T) {
++	tmp := t.TempDir()
++	_, private, err := ed25519.GenerateKey(rand.Reader)
++	require.NoError(t, err)
++	record := pymobiledevice3PairRecord{
++		HostIdentifier: "A4EF18F4-2920-4ECD-9F32-94719A9B92A9",
++		HostAltIRK:     make([]byte, 16),
++		PrivateKey:     private.Seed(),
++		PublicKey:      make([]byte, ed25519.PublicKeySize),
++	}
++	encoded, err := plist.Marshal(record, plist.BinaryFormat)
++	require.NoError(t, err)
++	recordPath := path.Join(tmp, "remote.plist")
++	require.NoError(t, os.WriteFile(recordPath, encoded, 0o600))
++
++	_, err = NewPairRecordManagerFromPymobiledevice3(recordPath)
++	require.ErrorContains(t, err, "public and private keys do not match")
++}
+diff --git a/ios/tunnel/remote_pairing_raw.go b/ios/tunnel/remote_pairing_raw.go
+new file mode 100644
+index 0000000..b516094
+--- /dev/null
++++ b/ios/tunnel/remote_pairing_raw.go
+@@ -0,0 +1,72 @@
++package tunnel
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++)
++
++const remotePairingPacketMagic = "RPPairing"
++
++// remotePairingRawConn adapts the TCP RemotePairing listener to the xpcConn
++// shape consumed by controlChannelReadWriter. The raw listener carries the
++// envelope value as JSON framed by "RPPairing" and a big-endian uint16 length;
++// the RSD untrusted service carries the same value inside RemoteXPC.
++type remotePairingRawConn struct {
++	conn net.Conn
++}
++
++func newRemotePairingRawConn(conn net.Conn) *remotePairingRawConn {
++	return &remotePairingRawConn{conn: conn}
++}
++
++func (r *remotePairingRawConn) Send(data map[string]interface{}, _ ...uint32) error {
++	value, ok := data["value"].(map[string]interface{})
++	if !ok {
++		return fmt.Errorf("remotePairingRawConn.Send: missing envelope value")
++	}
++	body, err := json.Marshal(value)
++	if err != nil {
++		return fmt.Errorf("remotePairingRawConn.Send: failed to encode JSON: %w", err)
++	}
++	if len(body) > int(^uint16(0)) {
++		return fmt.Errorf("remotePairingRawConn.Send: payload exceeds uint16 framing")
++	}
++
++	var packet bytes.Buffer
++	packet.WriteString(remotePairingPacketMagic)
++	if err := binary.Write(&packet, binary.BigEndian, uint16(len(body))); err != nil {
++		return err
++	}
++	packet.Write(body)
++	if _, err := io.Copy(r.conn, &packet); err != nil {
++		return fmt.Errorf("remotePairingRawConn.Send: failed to write packet: %w", err)
++	}
++	return nil
++}
++
++func (r *remotePairingRawConn) ReceiveOnClientServerStream() (map[string]interface{}, error) {
++	magic := make([]byte, len(remotePairingPacketMagic))
++	if _, err := io.ReadFull(r.conn, magic); err != nil {
++		return nil, fmt.Errorf("remotePairingRawConn.Receive: failed to read magic: %w", err)
++	}
++	if string(magic) != remotePairingPacketMagic {
++		return nil, fmt.Errorf("remotePairingRawConn.Receive: invalid packet magic")
++	}
++	var size uint16
++	if err := binary.Read(r.conn, binary.BigEndian, &size); err != nil {
++		return nil, fmt.Errorf("remotePairingRawConn.Receive: failed to read size: %w", err)
++	}
++	body := make([]byte, int(size))
++	if _, err := io.ReadFull(r.conn, body); err != nil {
++		return nil, fmt.Errorf("remotePairingRawConn.Receive: failed to read body: %w", err)
++	}
++	var value map[string]interface{}
++	if err := json.Unmarshal(body, &value); err != nil {
++		return nil, fmt.Errorf("remotePairingRawConn.Receive: failed to decode JSON: %w", err)
++	}
++	return map[string]interface{}{"value": value}, nil
++}
+diff --git a/ios/tunnel/remote_pairing_raw_test.go b/ios/tunnel/remote_pairing_raw_test.go
+new file mode 100644
+index 0000000..9bb2d65
+--- /dev/null
++++ b/ios/tunnel/remote_pairing_raw_test.go
+@@ -0,0 +1,73 @@
++package tunnel
++
++import (
++	"encoding/binary"
++	"encoding/json"
++	"io"
++	"net"
++	"testing"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestRemotePairingRawConnSend(t *testing.T) {
++	client, server := net.Pipe()
++	defer client.Close()
++	defer server.Close()
++	raw := newRemotePairingRawConn(client)
++	errCh := make(chan error, 1)
++	go func() {
++		errCh <- raw.Send(map[string]interface{}{
++			"mangledTypeName": "RemotePairing.ControlChannelMessageEnvelope",
++			"value": map[string]interface{}{
++				"message": map[string]interface{}{"bytes": []byte{1, 2, 3}},
++			},
++		})
++	}()
++
++	magic := make([]byte, len(remotePairingPacketMagic))
++	_, err := io.ReadFull(server, magic)
++	require.NoError(t, err)
++	assert.Equal(t, remotePairingPacketMagic, string(magic))
++	var size uint16
++	require.NoError(t, binary.Read(server, binary.BigEndian, &size))
++	body := make([]byte, int(size))
++	_, err = io.ReadFull(server, body)
++	require.NoError(t, err)
++	var decoded map[string]interface{}
++	require.NoError(t, json.Unmarshal(body, &decoded))
++	assert.Equal(t, "AQID", decoded["message"].(map[string]interface{})["bytes"])
++	require.NoError(t, <-errCh)
++}
++
++func TestRemotePairingRawConnReceive(t *testing.T) {
++	client, server := net.Pipe()
++	defer client.Close()
++	defer server.Close()
++	raw := newRemotePairingRawConn(client)
++	value := map[string]interface{}{
++		"message": map[string]interface{}{"plain": map[string]interface{}{"_0": "ok"}},
++	}
++	body, err := json.Marshal(value)
++	require.NoError(t, err)
++	go func() {
++		_, _ = server.Write([]byte(remotePairingPacketMagic))
++		_ = binary.Write(server, binary.BigEndian, uint16(len(body)))
++		_, _ = server.Write(body)
++	}()
++
++	decoded, err := raw.ReceiveOnClientServerStream()
++	require.NoError(t, err)
++	assert.Equal(t, value, decoded["value"])
++}
++
++func TestDecodeWireBytesAcceptsRawAndBase64(t *testing.T) {
++	raw := []byte{1, 2, 3}
++	decoded, err := decodeWireBytes(raw)
++	require.NoError(t, err)
++	assert.Equal(t, raw, decoded)
++	decoded, err = decodeWireBytes("AQID")
++	require.NoError(t, err)
++	assert.Equal(t, raw, decoded)
++}
+diff --git a/ios/tunnel/tunnel_tcp.go b/ios/tunnel/tunnel_tcp.go
+index c4fabda..600c28b 100644
+--- a/ios/tunnel/tunnel_tcp.go
++++ b/ios/tunnel/tunnel_tcp.go
+@@ -4,0 +5 @@ import (
++	"errors"
+@@ -5,0 +7,3 @@ import (
++	"net"
++	"strconv"
++	"time"
+@@ -11,0 +16,80 @@ import (
++// ConnectRemotePairingTCPUserspace establishes the iOS 18.2+ TLS-PSK tunnel
++// through an explicit RemotePairing endpoint. This avoids usbmuxd and Bonjour
++// discovery and exposes the tunnel through a local userspace TCP forwarder.
++func ConnectRemotePairingTCPUserspace(ctx context.Context, device ios.DeviceEntry, address string, remotePairingPort int, ifacePort int, p PairRecordManager) (Tunnel, error) {
++	if net.ParseIP(address) == nil {
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: endpoint must be an IP address")
++	}
++	if remotePairingPort <= 0 || remotePairingPort > 65535 {
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: invalid RemotePairing port")
++	}
++
++	controlConn, err := ios.DialTunnelTCP(net.JoinHostPort(address, strconv.Itoa(remotePairingPort)))
++	if err != nil {
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to connect to RemotePairing: %w", err)
++	}
++	handshakeDeadline := remotePairingHandshakeDeadline(ctx)
++	if err := controlConn.SetDeadline(handshakeDeadline); err != nil {
++		_ = controlConn.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to set handshake deadline: %w", err)
++	}
++	ts := newTunnelServiceWithControl(newRemotePairingRawConn(controlConn), controlConn, p)
++	if err := ts.VerifyPair(); err != nil {
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: pair verification failed: %w", err)
++	}
++	if err := controlConn.SetDeadline(time.Time{}); err != nil {
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to clear handshake deadline: %w", err)
++	}
++
++	tunnelPort, err := ts.createTcpTunnelListener()
++	if err != nil {
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to create TCP tunnel listener: %w", err)
++	}
++	dataConn, err := ios.DialTunnelTCP(net.JoinHostPort(address, strconv.Itoa(int(tunnelPort))))
++	if err != nil {
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to connect to TCP tunnel listener: %w", err)
++	}
++	if err := dataConn.SetDeadline(remotePairingHandshakeDeadline(ctx)); err != nil {
++		_ = dataConn.Close()
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to set data handshake deadline: %w", err)
++	}
++	tlsConn, err := tlspsk.Client(dataConn, ts.sharedSecret)
++	if err != nil {
++		_ = dataConn.Close()
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: TLS-PSK handshake failed: %w", err)
++	}
++
++	tun, err := connectToUserspaceTunnelLockdown(ctx, device, tlsConn, ifacePort)
++	if err != nil {
++		_ = tlsConn.Close()
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: userspace tunnel failed: %w", err)
++	}
++	if err := tlsConn.SetDeadline(time.Time{}); err != nil {
++		_ = tun.Close()
++		_ = ts.Close()
++		return Tunnel{}, fmt.Errorf("ConnectRemotePairingTCPUserspace: failed to clear data handshake deadline: %w", err)
++	}
++	tun.UserspaceTUN = true
++	tun.UserspaceTUNPort = ifacePort
++	originalClose := tun.closer
++	tun.closer = func() error {
++		return errors.Join(originalClose(), ts.Close())
++	}
++	return tun, nil
++}
++
++func remotePairingHandshakeDeadline(ctx context.Context) time.Time {
++	deadline := time.Now().Add(8 * time.Second)
++	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
++		return contextDeadline
++	}
++	return deadline
++}
++
+diff --git a/ios/tunnel/untrusted.go b/ios/tunnel/untrusted.go
+index b58704b..8d0d1df 100644
+--- a/ios/tunnel/untrusted.go
++++ b/ios/tunnel/untrusted.go
+@@ -28,0 +29,4 @@ func newTunnelServiceWithXpc(xpcConn *xpc.Connection, c io.Closer, pairRecords P
++	return newTunnelServiceWithControl(xpcConn, c, pairRecords)
++}
++
++func newTunnelServiceWithControl(conn xpcConn, c io.Closer, pairRecords PairRecordManager) *tunnelService {
+@@ -30 +34 @@ func newTunnelServiceWithXpc(xpcConn *xpc.Connection, c io.Closer, pairRecords P
+-		xpcConn:        xpcConn,
++		xpcConn:        conn,
+@@ -32 +36 @@ func newTunnelServiceWithXpc(xpcConn *xpc.Connection, c io.Closer, pairRecords P
+-		controlChannel: newControlChannelReadWriter(xpcConn),
++		controlChannel: newControlChannelReadWriter(conn),
+@@ -38 +42 @@ type tunnelService struct {
+-	xpcConn *xpc.Connection
++	xpcConn xpcConn
+@@ -56,5 +60,3 @@ func (t *tunnelService) Close() error {
+-// ManualPair triggers a device pairing that requires the user to press the 'Trust' button on the device that appears
+-// when this operation is triggered
+-// If there is already an active pairing with the credentials stored in PairRecordManager this call does not trigger
+-// anything on the device and returns with an error
+-func (t *tunnelService) ManualPair() error {
++// VerifyPair verifies only the identity already held by PairRecordManager. It
++// never falls back to a new pairing prompt.
++func (t *tunnelService) VerifyPair() error {
+@@ -73 +75 @@ func (t *tunnelService) ManualPair() error {
+-		return fmt.Errorf("ManualPair: failed to send 'attemptPairVerify' request: %w", err)
++		return fmt.Errorf("VerifyPair: failed to send 'attemptPairVerify' request: %w", err)
+@@ -78 +80,4 @@ func (t *tunnelService) ManualPair() error {
+-		return fmt.Errorf("ManualPair: failed to read 'attemptPairVerify' response: %w", err)
++		return fmt.Errorf("VerifyPair: failed to read 'attemptPairVerify' response: %w", err)
++	}
++	if err := t.verifyPair(); err != nil {
++		return fmt.Errorf("VerifyPair: saved identity was rejected: %w", err)
+@@ -79,0 +85,9 @@ func (t *tunnelService) ManualPair() error {
++	return nil
++}
++
++// ManualPair triggers a device pairing that requires the user to press the 'Trust' button on the device that appears
++// when this operation is triggered
++// If there is already an active pairing with the credentials stored in PairRecordManager this call does not trigger
++// anything on the device and returns with an error
++func (t *tunnelService) ManualPair() error {
++	err := t.VerifyPair()
+@@ -81 +94,0 @@ func (t *tunnelService) ManualPair() error {
+-	err = t.verifyPair()
+diff --git a/ios/zipconduit/zipconduit_installer.go b/ios/zipconduit/zipconduit_installer.go
+index 754b47f..64d1d64 100644
+--- a/ios/zipconduit/zipconduit_installer.go
++++ b/ios/zipconduit/zipconduit_installer.go
+@@ -61,0 +62,2 @@ type Connection struct {
++type ProgressHandler func(percent int, status string)
++
+@@ -100,0 +103,6 @@ func (conn Connection) SendFile(appFilePath string) error {
++	return conn.SendFileWithProgress(appFilePath, nil)
++}
++
++// SendFileWithProgress installs an app and reports each device installation
++// progress update to handler. A nil handler preserves SendFile behavior.
++func (conn Connection) SendFileWithProgress(appFilePath string, handler ProgressHandler) error {
+@@ -113 +121 @@ func (conn Connection) SendFile(appFilePath string) error {
+-		return conn.sendDirectory(appFilePath)
++		return conn.sendDirectory(appFilePath, handler)
+@@ -115 +123 @@ func (conn Connection) SendFile(appFilePath string) error {
+-	return conn.sendIpaFile(appFilePath)
++	return conn.sendIpaFile(appFilePath, handler)
+@@ -122 +130 @@ func (conn Connection) Close() error {
+-func (conn Connection) sendDirectory(dir string) error {
++func (conn Connection) sendDirectory(dir string, handler ProgressHandler) error {
+@@ -188 +196 @@ func (conn Connection) sendDirectory(dir string) error {
+-	return conn.waitForInstallation()
++	return conn.waitForInstallation(handler)
+@@ -191 +199 @@ func (conn Connection) sendDirectory(dir string) error {
+-func (conn Connection) sendIpaFile(ipaFile string) error {
++func (conn Connection) sendIpaFile(ipaFile string, handler ProgressHandler) error {
+@@ -252 +260 @@ func (conn Connection) sendIpaFile(ipaFile string) error {
+-	return conn.waitForInstallation()
++	return conn.waitForInstallation(handler)
+@@ -255 +263 @@ func (conn Connection) sendIpaFile(ipaFile string) error {
+-func (conn Connection) waitForInstallation() error {
++func (conn Connection) waitForInstallation(handler ProgressHandler) error {
+@@ -267,0 +276,3 @@ func (conn Connection) waitForInstallation() error {
++			if handler != nil {
++				handler(100, status)
++			}
+@@ -270,0 +282,3 @@ func (conn Connection) waitForInstallation() error {
++		if handler != nil {
++			handler(percent, status)
++		}
+diff --git a/ios/tunnel/rwcendpoint.go b/ios/tunnel/rwcendpoint.go
+index e56a38b..806b08a 100644
+--- a/ios/tunnel/rwcendpoint.go
++++ b/ios/tunnel/rwcendpoint.go
+@@ -50,0 +51,3 @@ type Endpoint struct {
++	// done receives the terminal read error that stopped the inbound packet pump.
++	done chan error
++
+@@ -113,0 +117 @@ func RWCEndpointNew(rw io.ReadWriter, mtu uint32, offset int) (*Endpoint, error)
++		done:     make(chan error, 1),
+@@ -138,0 +143,5 @@ func (e *Endpoint) Wait() {
++// Done reports the terminal read error that stopped the tunnel data plane.
++func (e *Endpoint) Done() <-chan error {
++	return e.done
++}
++
+@@ -157,0 +167,2 @@ func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
++			e.done <- err
++			close(e.done)
+diff --git a/ios/tunnel/rwcendpoint_done_test.go b/ios/tunnel/rwcendpoint_done_test.go
+new file mode 100644
+index 0000000..838feb4
+--- /dev/null
++++ b/ios/tunnel/rwcendpoint_done_test.go
+@@ -0,0 +1,37 @@
++package tunnel
++
++import (
++	"context"
++	"errors"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/require"
++)
++
++type terminalReadWriter struct {
++	err error
++}
++
++func (rw terminalReadWriter) Read([]byte) (int, error) {
++	return 0, rw.err
++}
++
++func (terminalReadWriter) Write(p []byte) (int, error) {
++	return len(p), nil
++}
++
++func TestEndpointDoneReportsTerminalReadError(t *testing.T) {
++	want := errors.New("outer transport stopped")
++	endpoint, err := RWCEndpointNew(terminalReadWriter{err: want}, 1500, 0)
++	require.NoError(t, err)
++	_, cancel := context.WithCancel(context.Background())
++	go endpoint.dispatchLoop(cancel)
++
++	select {
++	case got := <-endpoint.Done():
++		require.ErrorIs(t, got, want)
++	case <-time.After(time.Second):
++		t.Fatal("endpoint did not report terminal read error")
++	}
++}
+diff --git a/ios/tunnel/tunnel.go b/ios/tunnel/tunnel.go
+index cd1bba6..7f188bc 100644
+--- a/ios/tunnel/tunnel.go
++++ b/ios/tunnel/tunnel.go
+@@ -40,0 +41 @@ type Tunnel struct {
++	done             <-chan error
+@@ -47,0 +49,6 @@ func (t Tunnel) Close() error {
++// Done reports terminal failure of a userspace tunnel's outer packet pump.
++// Non-userspace tunnels return nil because they do not expose this lifecycle.
++func (t Tunnel) Done() <-chan error {
++	return t.done
++}
++
+diff --git a/ios/tunnel/userspace_tunnel.go b/ios/tunnel/userspace_tunnel.go
+index 37248c5..234a51e 100644
+--- a/ios/tunnel/userspace_tunnel.go
++++ b/ios/tunnel/userspace_tunnel.go
+@@ -56,0 +57,5 @@ type UserSpaceTUNInterface struct {
++// Done reports terminal failure of the outer userspace packet pump.
++func (iface *UserSpaceTUNInterface) Done() <-chan error {
++	return iface.endpoint.Done()
++}
++
+@@ -270,0 +276 @@ func connectToUserspaceTunnelLockdown(ctx context.Context, device ios.DeviceEntr
++		done:    iface.Done(),
+diff --git a/ios/installationproxy/installationproxy.go b/ios/installationproxy/installationproxy.go
+index 8a70730..563e2c2 100644
+--- a/ios/installationproxy/installationproxy.go
++++ b/ios/installationproxy/installationproxy.go
+@@ -12 +12 @@ import (
+-const logModule = "go-ios/installationproxy"
++const logModule = "Link Core/InstallationProxy"
+diff --git a/ios/rsd.go b/ios/rsd.go
+index 5c9e301..d92eabd 100644
+--- a/ios/rsd.go
++++ b/ios/rsd.go
+@@ -94 +94 @@ func RsdCheckin(rw io.ReadWriter) error {
+-		"Label":           "go-ios",
++		"Label":           "Link Core",
+diff --git a/ios/tunnel/tunnel.go b/ios/tunnel/tunnel.go
+index cd1bba6..399fd3c 100644
+--- a/ios/tunnel/tunnel.go
++++ b/ios/tunnel/tunnel.go
+@@ -27 +27 @@ import (
+-const logModule = "go-ios/tunnel"
++const logModule = "Link Core/Tunnel"
+diff --git a/ios/tunnel/tunnel_api.go b/ios/tunnel/tunnel_api.go
+index 4dfde47..968e3c3 100644
+--- a/ios/tunnel/tunnel_api.go
++++ b/ios/tunnel/tunnel_api.go
+@@ -47 +47 @@ func WaitUntilAgentReady() bool {
+-		golog.Info("Waiting for go-ios agent to be ready...", "module", logModule)
++		golog.Info("Waiting for Link Core agent to be ready...", "module", logModule)
+diff --git a/ios/tunnel/untrusted.go b/ios/tunnel/untrusted.go
+index b58704b..ade576f 100644
+--- a/ios/tunnel/untrusted.go
++++ b/ios/tunnel/untrusted.go
+@@ -495 +508 @@ func (t *tunnelService) exchangeDeviceInfo(sessionKey []byte) error {
+-		"model":                       "go-ios",
++		"model":                       "Link Core",
+diff --git a/ios/zipconduit/zip_utils.go b/ios/zipconduit/zip_utils.go
+index c8c99ad..a0a7382 100644
+--- a/ios/zipconduit/zip_utils.go
++++ b/ios/zipconduit/zip_utils.go
+@@ -8 +8 @@ import (
+-const logModule = "go-ios/zipconduit"
++const logModule = "Link Core/ZipConduit"

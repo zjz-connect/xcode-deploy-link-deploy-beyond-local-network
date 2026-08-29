@@ -1,0 +1,12 @@
+{
+  "schema_version": 4,
+  "device_label": "development iphone",
+  "remote_identifier": "00008140-0000000000000000",
+  "target_tailnet_ip": "100.64.0.10",
+  "remote_pairing_port": 49152,
+  "pair_record_path": "/Users/example/.pymobiledevice3/remote_00008140-0000000000000000.plist",
+  "local_forward_port": 61015,
+  "connect_timeout_seconds": 12,
+  "retry_interval_seconds": 5,
+  "install_timeout_seconds": 300
+}
