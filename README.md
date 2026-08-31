@@ -1,24 +1,25 @@
-# Deploy Link
+# Nodus Remote Deploy
 
 [English](#english) · [中文](#中文)
 
 ## English
 
-Deploy Xcode-built apps beyond the local network. Deploy Link keeps one
+Deploy Xcode-built apps beyond the local network. Nodus Remote Deploy keeps one
 authenticated Apple RemotePairing tunnel open over Tailscale, so a signed iOS
 app built on a Mac can be installed on a paired iPhone after the phone roams
 from Wi-Fi to 5G.
 
 > [!IMPORTANT]
-> Establish the Deploy Link bridge first. Xcode builds and signs the app; Deploy
-> Link then installs Xcode's `.app` output through that bridge. This project does
-> not make the iPhone appear as a native remote Xcode Run Destination.
+> Establish the Nodus Remote Deploy bridge first. Xcode builds and signs the
+> app; Nodus Remote Deploy then installs Xcode's `.app` output through that
+> bridge. This project does not make the iPhone appear as a native remote Xcode
+> Run Destination.
 
 ```text
 Xcode build + signing
         |
         v
-signed .app -> Deploy Link CLI -> owner-only Unix socket
+signed .app -> Nodus Remote Deploy CLI -> owner-only Unix socket
                                       |
                                       v
                             persistent bridge on macOS
@@ -58,8 +59,8 @@ python3 -m pymobiledevice3 lockdown remotepairing --pair
 ```
 
 The record is normally written under `~/.pymobiledevice3/`. It contains private
-key material and must remain readable only by its owner. Deploy Link reads it in
-place and never copies it into the repository or profile.
+key material and must remain readable only by its owner. Nodus Remote Deploy
+reads it in place and never copies it into the repository or profile.
 
 ### 2. Install the bridge
 
@@ -73,7 +74,7 @@ The deterministic installer downloads the pinned Go toolchain and pinned Link
 Core source, applies the repository patch, and installs the binary under:
 
 ```text
-~/Library/Application Support/Deploy Link/bin/deploy-link
+~/Library/Application Support/Nodus Remote Deploy/bin/nodus-remote-deploy
 ```
 
 It does not install Go globally.
@@ -85,19 +86,19 @@ below with the RemotePairing identifier, the iPhone's Tailscale IP, and the
 absolute path to its pairing record:
 
 ```sh
-deploy_link="$HOME/Library/Application Support/Deploy Link/bin/deploy-link"
-profile="$HOME/Library/Application Support/Deploy Link/iphone.json"
+nodus_remote_deploy="$HOME/Library/Application Support/Nodus Remote Deploy/bin/nodus-remote-deploy"
+profile="$HOME/Library/Application Support/Nodus Remote Deploy/iphone.json"
 
-"$deploy_link" configure \
+"$nodus_remote_deploy" configure \
   --profile "$profile" \
   --device-label "development iphone" \
   --remote-identifier "REMOTE-PAIRING-IDENTIFIER" \
   --target-tailnet-ip "TAILSCALE-IP" \
   --pair-record "$HOME/.pymobiledevice3/remote_REMOTE-PAIRING-IDENTIFIER.plist"
 
-"$deploy_link" doctor --profile "$profile"
-"$deploy_link" launch-agent install --profile "$profile"
-"$deploy_link" status --profile "$profile"
+"$nodus_remote_deploy" doctor --profile "$profile"
+"$nodus_remote_deploy" launch-agent install --profile "$profile"
+"$nodus_remote_deploy" status --profile "$profile"
 ```
 
 Do not switch the iPhone to 5G until `status` reports `active`. The default
@@ -115,23 +116,23 @@ xcodebuild \
   -scheme YourApp \
   -configuration Debug \
   -destination 'generic/platform=iOS' \
-  -derivedDataPath "$PWD/.build/DeployLinkDerivedData" \
+  -derivedDataPath "$PWD/.build/NodusRemoteDeployDerivedData" \
   build
 ```
 
 For a workspace, replace `-project YourApp.xcodeproj` with
 `-workspace YourApp.xcworkspace`. A successful device build produces a signed
 `.app`, usually under
-`.build/DeployLinkDerivedData/Build/Products/Debug-iphoneos/`.
+`.build/NodusRemoteDeployDerivedData/Build/Products/Debug-iphoneos/`.
 
 ### 5. Install Xcode's output through the bridge
 
 Once the bridge is active, the iPhone may roam to 5G. Install the signed result:
 
 ```sh
-"$deploy_link" install \
+"$nodus_remote_deploy" install \
   --profile "$profile" \
-  "$PWD/.build/DeployLinkDerivedData/Build/Products/Debug-iphoneos/YourApp.app"
+  "$PWD/.build/NodusRemoteDeployDerivedData/Build/Products/Debug-iphoneos/YourApp.app"
 ```
 
 The short-lived CLI submits the request to the persistent daemon. Success is
@@ -142,10 +143,10 @@ generation.
 Useful commands:
 
 ```sh
-"$deploy_link" status --profile "$profile"
-"$deploy_link" watch --profile "$profile"
-"$deploy_link" stop --profile "$profile"
-"$deploy_link" launch-agent remove --profile "$profile"
+"$nodus_remote_deploy" status --profile "$profile"
+"$nodus_remote_deploy" watch --profile "$profile"
+"$nodus_remote_deploy" stop --profile "$profile"
+"$nodus_remote_deploy" launch-agent remove --profile "$profile"
 ```
 
 ### Development
@@ -155,32 +156,32 @@ Useful commands:
 ```
 
 The test entry point verifies the pinned downstream patch, affected Link Core
-packages, Deploy Link unit tests, race tests, and `go vet`. See
+packages, Nodus Remote Deploy unit tests, race tests, and `go vet`. See
 [`docs/architecture.md`](docs/architecture.md) for ownership and failure
 boundaries.
 
-Deploy Link is released under the [MIT License](LICENSE). Link Core is derived
-from [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios); see
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+Nodus Remote Deploy is released under the [MIT License](LICENSE). Link Core is
+derived from [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios);
+see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ---
 
 ## 中文
 
-Deploy Link 用于在局域网之外安装由 Xcode 构建的 App。它通过 Tailscale
+Nodus Remote Deploy 用于在局域网之外安装由 Xcode 构建的 App。它通过 Tailscale
 持续保有一条经过认证的 Apple RemotePairing 隧道，使 Mac 上由 Xcode 构建并
 签名的 iOS App，可以在已配对的 iPhone 从 Wi-Fi 切换到 5G 后继续安装。
 
 > [!IMPORTANT]
-> 必须先建立 Deploy Link bridge。Xcode 负责构建和签名，Deploy Link 再通过
-> bridge 安装 Xcode 生成的 `.app`。本项目不会让 iPhone 变成 Xcode 原生的远程
-> Run Destination。
+> 必须先建立 Nodus Remote Deploy bridge。Xcode 负责构建和签名，Nodus
+> Remote Deploy 再通过 bridge 安装 Xcode 生成的 `.app`。本项目不会让 iPhone
+> 变成 Xcode 原生的远程 Run Destination。
 
 ```text
 Xcode 构建和签名
         |
         v
-已签名 .app -> Deploy Link CLI -> 仅限当前用户的 Unix socket
+已签名 .app -> Nodus Remote Deploy CLI -> 仅限当前用户的 Unix socket
                                       |
                                       v
                               macOS 常驻 bridge
@@ -219,7 +220,7 @@ python3 -m pymobiledevice3 lockdown remotepairing --pair
 ```
 
 record 通常位于 `~/.pymobiledevice3/`。其中包含私钥，只能由当前用户读取。
-Deploy Link 会在原路径读取它，不会将其复制到仓库或 profile。
+Nodus Remote Deploy 会在原路径读取它，不会将其复制到仓库或 profile。
 
 ### 2. 安装 bridge
 
@@ -233,7 +234,7 @@ cd xcode-deploy-link-deploy-beyond-local-network
 patch，并将二进制文件安装到：
 
 ```text
-~/Library/Application Support/Deploy Link/bin/deploy-link
+~/Library/Application Support/Nodus Remote Deploy/bin/nodus-remote-deploy
 ```
 
 它不会在系统中全局安装 Go。
@@ -244,19 +245,19 @@ patch，并将二进制文件安装到：
 identifier、iPhone 的 Tailscale IP，以及 pairing record 的绝对路径：
 
 ```sh
-deploy_link="$HOME/Library/Application Support/Deploy Link/bin/deploy-link"
-profile="$HOME/Library/Application Support/Deploy Link/iphone.json"
+nodus_remote_deploy="$HOME/Library/Application Support/Nodus Remote Deploy/bin/nodus-remote-deploy"
+profile="$HOME/Library/Application Support/Nodus Remote Deploy/iphone.json"
 
-"$deploy_link" configure \
+"$nodus_remote_deploy" configure \
   --profile "$profile" \
   --device-label "development iphone" \
   --remote-identifier "REMOTE-PAIRING-IDENTIFIER" \
   --target-tailnet-ip "TAILSCALE-IP" \
   --pair-record "$HOME/.pymobiledevice3/remote_REMOTE-PAIRING-IDENTIFIER.plist"
 
-"$deploy_link" doctor --profile "$profile"
-"$deploy_link" launch-agent install --profile "$profile"
-"$deploy_link" status --profile "$profile"
+"$nodus_remote_deploy" doctor --profile "$profile"
+"$nodus_remote_deploy" launch-agent install --profile "$profile"
+"$nodus_remote_deploy" status --profile "$profile"
 ```
 
 必须等 `status` 显示 `active` 后，才能把 iPhone 切换到 5G。默认 RemotePairing
@@ -273,22 +274,22 @@ xcodebuild \
   -scheme YourApp \
   -configuration Debug \
   -destination 'generic/platform=iOS' \
-  -derivedDataPath "$PWD/.build/DeployLinkDerivedData" \
+  -derivedDataPath "$PWD/.build/NodusRemoteDeployDerivedData" \
   build
 ```
 
 如果使用 workspace，将 `-project YourApp.xcodeproj` 替换为
 `-workspace YourApp.xcworkspace`。成功的设备构建会生成已签名 `.app`，通常位于
-`.build/DeployLinkDerivedData/Build/Products/Debug-iphoneos/`。
+`.build/NodusRemoteDeployDerivedData/Build/Products/Debug-iphoneos/`。
 
 ### 5. 通过 bridge 安装 Xcode 输出
 
 bridge 激活后，iPhone 可以切换到 5G。安装已签名的构建结果：
 
 ```sh
-"$deploy_link" install \
+"$nodus_remote_deploy" install \
   --profile "$profile" \
-  "$PWD/.build/DeployLinkDerivedData/Build/Products/Debug-iphoneos/YourApp.app"
+  "$PWD/.build/NodusRemoteDeployDerivedData/Build/Products/Debug-iphoneos/YourApp.app"
 ```
 
 短生命周期 CLI 会把请求交给常驻 daemon。只有 streaming zip conduit 完成，且
@@ -298,10 +299,10 @@ InstallationProxy 从 iPhone 回读到该 bundle 后，命令才会报告成功�
 常用命令：
 
 ```sh
-"$deploy_link" status --profile "$profile"
-"$deploy_link" watch --profile "$profile"
-"$deploy_link" stop --profile "$profile"
-"$deploy_link" launch-agent remove --profile "$profile"
+"$nodus_remote_deploy" status --profile "$profile"
+"$nodus_remote_deploy" watch --profile "$profile"
+"$nodus_remote_deploy" stop --profile "$profile"
+"$nodus_remote_deploy" launch-agent remove --profile "$profile"
 ```
 
 ### 开发与验证
@@ -310,10 +311,10 @@ InstallationProxy 从 iPhone 回读到该 bundle 后，命令才会报告成功�
 ./scripts/test.sh
 ```
 
-测试入口会验证固定的下游 patch、受影响的 Link Core package、Deploy Link 单元
-测试、race test 和 `go vet`。所有权与失败边界见
+测试入口会验证固定的下游 patch、受影响的 Link Core package、Nodus Remote
+Deploy 单元测试、race test 和 `go vet`。所有权与失败边界见
 [`docs/architecture.md`](docs/architecture.md)。
 
-Deploy Link 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
+Nodus Remote Deploy 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
 [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios)，完整归属见
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

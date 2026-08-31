@@ -1,12 +1,12 @@
-# Deploy Link Architecture
+# Nodus Remote Deploy Architecture
 
-Document revision: `0.7.0`
+Document revision: `1.0.0`
 
-Revised: `2026-08-28`
+Revised: `2026-08-31`
 
 ## Decision
 
-Deploy Link is one unprivileged, launchd-managed Go daemon on macOS. It owns one
+Nodus Remote Deploy is one unprivileged, launchd-managed Go daemon on macOS. It owns one
 verified RemotePairing control connection, one TLS-PSK data connection, one
 userspace RSD topology, and serialized app-install requests for one configured
 iPhone. Tailscale supplies stable unicast reachability but is not pairing,
@@ -14,6 +14,17 @@ session, or installation authority.
 
 The CLI is a short-lived client. It communicates only through a profile-scoped,
 owner-only Unix socket. No control API is exposed over TCP.
+
+The component name is also the runtime identity:
+
+- executable and process: `nodus-remote-deploy`;
+- per-user LaunchAgent: `com.zjz.nodus-remote-deploy`;
+- runtime root: `~/Library/Application Support/Nodus Remote Deploy/`;
+- runtime-root override: `NODUS_REMOTE_DEPLOY_RUNTIME_ROOT`.
+
+The superseded executable, LaunchAgent, socket, runtime root and environment
+key are removed at the v1.0.0 cutover. There is no command alias, parallel
+daemon or compatibility path.
 
 ## Build and install ownership
 
@@ -23,11 +34,11 @@ owner-only Unix socket. No control API is exposed over TCP.
 | Development signing | Xcode and Apple's signing assets |
 | Bridge reachability | Tailscale plus the configured iPhone Tailnet IP |
 | Pair verification | The configured owner-only RemotePairing record |
-| Warm session | The long-running Deploy Link daemon |
+| Warm session | The long-running Nodus Remote Deploy daemon |
 | App transfer | Streaming zip conduit over the live RSD session |
 | Success readback | InstallationProxy bundle enumeration |
 
-Deploy Link consumes an existing signed `.app`. It does not become an Xcode Run
+Nodus Remote Deploy consumes an existing signed `.app`. It does not become an Xcode Run
 Destination, select a signing team, modify a project, or weaken iOS signature
 validation.
 
@@ -75,7 +86,7 @@ causes iOS to expose RemotePairing again.
 The installer verifies the Go archive checksum, verifies the exact upstream
 commit, and fails if the patch no longer applies cleanly. Generated dependency
 source, caches, profiles, pairing records, logs, and binaries remain outside
-Git under `~/Library/Application Support/Deploy Link/`.
+Git under `~/Library/Application Support/Nodus Remote Deploy/`.
 
 ## Security invariants
 
