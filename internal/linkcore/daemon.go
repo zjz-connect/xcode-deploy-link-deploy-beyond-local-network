@@ -101,7 +101,7 @@ func (d *Daemon) establish(ctx context.Context) {
 		code := errorCode(err)
 		d.setState(StateWaiting, code)
 		if code != "remote_pairing_cold" {
-			slog.Warn("Deploy Link acquisition failed", "errorCode", code)
+			slog.Warn("Nodus Remote Deploy acquisition failed", "errorCode", code)
 		}
 		return
 	}
@@ -112,7 +112,7 @@ func (d *Daemon) establish(ctx context.Context) {
 	d.lastErrorCode = ""
 	generation := d.generation
 	d.mu.Unlock()
-	slog.Info("Deploy Link session active", "generation", generation)
+	slog.Info("Nodus Remote Deploy session active", "generation", generation)
 }
 
 func (d *Daemon) loseSession(generation uint64, err error) {
@@ -130,7 +130,7 @@ func (d *Daemon) loseSession(generation uint64, err error) {
 	if session != nil {
 		_ = session.Close()
 	}
-	slog.Warn("Deploy Link outer tunnel stopped", "generation", generation, "error", err)
+	slog.Warn("Nodus Remote Deploy outer tunnel stopped", "generation", generation, "error", err)
 }
 
 func waitContext(ctx context.Context, duration time.Duration) bool {
@@ -192,7 +192,7 @@ func (d *Daemon) install(ctx context.Context, appPath string, progress func(int,
 	cancel()
 	if err != nil {
 		d.setState(StateRecovering, "service_unresponsive")
-		slog.Warn("Deploy Link install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		slog.Warn("Nodus Remote Deploy install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
 		return err
 	}
 	d.mu.Lock()
@@ -265,7 +265,7 @@ func (d *Daemon) Serve(parent context.Context) error {
 		<-ctx.Done()
 		_ = listener.Close()
 	}()
-	slog.Info("Deploy Link daemon listening")
+	slog.Info("Nodus Remote Deploy daemon listening")
 	for {
 		connection, err := listener.Accept()
 		if err != nil {

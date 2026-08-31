@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const ModuleVersion = "0.7.0"
+const ModuleVersion = "1.0.0"
 const PinnedLinkCoreCommit = "3ebc297691a9e364772aef027744ebc0c49421a5"
 
 type DoctorReport struct {
@@ -135,7 +135,7 @@ func Doctor(ctx context.Context, profilePath string, metadata BuildMetadata) (Do
 		PatchSHA256:    metadata.PatchSHA256,
 	}
 	if !report.MacOS || !report.Arm64 {
-		return report, coded("platform_unsupported", "Deploy Link requires macOS arm64", nil)
+		return report, coded("platform_unsupported", "Nodus Remote Deploy requires macOS arm64", nil)
 	}
 	if err := validateBuildMetadata(metadata); err != nil {
 		return report, err

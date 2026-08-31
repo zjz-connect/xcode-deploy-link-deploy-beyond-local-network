@@ -226,18 +226,18 @@ func TestDaemonServeControlSocketLifecycle(t *testing.T) {
 }
 
 func TestPrepareUnixListenerRejectsLiveOwner(t *testing.T) {
-	directory, err := os.MkdirTemp("/tmp", "deploy-link-listener-")
+	directory, err := os.MkdirTemp("/tmp", "nodus-remote-deploy-listener-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(directory) })
-	socketPath := filepath.Join(directory, "deploy-link.sock")
+	socketPath := filepath.Join(directory, "nodus-remote-deploy.sock")
 	listener, err := prepareUnixListener(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	if _, err := prepareUnixListener(socketPath); errorCode(err) != "deploy_link_already_running" {
-		t.Fatalf("error = %v, want deploy_link_already_running", err)
+	if _, err := prepareUnixListener(socketPath); errorCode(err) != "nodus_remote_deploy_already_running" {
+		t.Fatalf("error = %v, want nodus_remote_deploy_already_running", err)
 	}
 }

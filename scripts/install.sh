@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-module_version="0.7.0"
+module_version="1.0.0"
 go_version="1.26.5"
 go_archive_sha256="efb87ff28af9a188d0536ef5d42e63dd52ba8263cd7344a993cc48dd11dedb6a"
 link_core_commit="3ebc297691a9e364772aef027744ebc0c49421a5"
@@ -12,7 +12,7 @@ script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 module_directory="$(cd "${script_directory}/.." && pwd -P)"
 patch_path="${module_directory}/patches/link-core-tailnet.patch"
 : "${HOME:?HOME must be set}"
-runtime_root="${DEPLOY_LINK_RUNTIME_ROOT:-${HOME}/Library/Application Support/Deploy Link}"
+runtime_root="${NODUS_REMOTE_DEPLOY_RUNTIME_ROOT:-${HOME}/Library/Application Support/Nodus Remote Deploy}"
 build_root="${runtime_root}/build"
 downloads_directory="${build_root}/downloads"
 toolchains_directory="${build_root}/toolchains"
@@ -22,7 +22,7 @@ cache_directory="${build_root}/cache"
 binary_directory="${runtime_root}/bin"
 
 fail() {
-  printf 'Deploy Link install failed: %s\n' "$1" >&2
+  printf 'Nodus Remote Deploy install failed: %s\n' "$1" >&2
   exit 1
 }
 
@@ -121,11 +121,11 @@ if [[ ! -f "${workspace_file}" ]]; then
   mv "${workspace_stage}" "${workspace_root}"
 fi
 grep -Fq "${module_directory}" "${workspace_file}" \
-  || fail "cached Go workspace points at a different Deploy Link module"
+  || fail "cached Go workspace points at a different Nodus Remote Deploy module"
 grep -Fq "${source_root}" "${workspace_file}" \
   || fail "cached Go workspace points at a different Link Core source"
 
-staged_binary="${staging_root}/deploy-link"
+staged_binary="${staging_root}/nodus-remote-deploy"
 ldflags="-s -w -X main.version=${module_version} -X main.linkCoreCommit=${link_core_commit} -X main.patchSHA=${patch_sha256}"
 (
   cd "${module_directory}"
@@ -133,11 +133,11 @@ ldflags="-s -w -X main.version=${module_version} -X main.linkCoreCommit=${link_c
     GOCACHE="${cache_directory}/go-build" \
     GOMODCACHE="${cache_directory}/go-mod" \
     "${go_binary}" build -buildvcs=false -trimpath -ldflags "${ldflags}" \
-      -o "${staged_binary}" ./cmd/deploy-link
+      -o "${staged_binary}" ./cmd/nodus-remote-deploy
 )
 /usr/bin/codesign --force --sign - "${staged_binary}" >/dev/null
 chmod 0755 "${staged_binary}"
-mv -f "${staged_binary}" "${binary_directory}/deploy-link"
+mv -f "${staged_binary}" "${binary_directory}/nodus-remote-deploy"
 
-"${binary_directory}/deploy-link" version
-printf 'Installed %s\n' "${binary_directory}/deploy-link"
+"${binary_directory}/nodus-remote-deploy" version
+printf 'Installed %s\n' "${binary_directory}/nodus-remote-deploy"

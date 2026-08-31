@@ -70,7 +70,7 @@ func prepareUnixListener(socketPath string) (net.Listener, error) {
 		connection, dialErr := net.DialTimeout("unix", socketPath, 500*time.Millisecond)
 		if dialErr == nil {
 			_ = connection.Close()
-			return nil, coded("deploy_link_already_running", "another Deploy Link process owns the control socket", nil)
+			return nil, coded("nodus_remote_deploy_already_running", "another Nodus Remote Deploy process owns the control socket", nil)
 		}
 		if err := os.Remove(socketPath); err != nil {
 			return nil, coded("control_socket_failed", "could not remove a stale control socket", err)
@@ -110,7 +110,7 @@ func Call(ctx context.Context, profilePath string, request Request, onResponse f
 	dialer := net.Dialer{}
 	connection, err := dialer.DialContext(ctx, "unix", socketPath)
 	if err != nil {
-		return coded("deploy_link_not_running", "Deploy Link does not answer on the profile control socket", err)
+		return coded("nodus_remote_deploy_not_running", "Nodus Remote Deploy does not answer on the profile control socket", err)
 	}
 	defer connection.Close()
 	if deadline, ok := ctx.Deadline(); ok {

@@ -10,7 +10,7 @@ import (
 
 func testConfig(t *testing.T) (Config, string) {
 	t.Helper()
-	directory, err := os.MkdirTemp("/tmp", "deploy-link-test-")
+	directory, err := os.MkdirTemp("/tmp", "nodus-remote-deploy-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

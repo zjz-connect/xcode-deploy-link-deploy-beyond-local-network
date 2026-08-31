@@ -14,22 +14,22 @@ func TestValidateAppAcceptsSignedBundle(t *testing.T) {
 		t.Skip("codesign bundle validation is macOS-only")
 	}
 	directory := t.TempDir()
-	appPath := filepath.Join(directory, "DeployLinkTest.app")
+	appPath := filepath.Join(directory, "NodusRemoteDeployTest.app")
 	if err := os.Mkdir(appPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	infoPlist := []byte(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>DeployLinkTest</string>
-<key>CFBundleIdentifier</key><string>one.zjz.deploy-link-test</string>
+<key>CFBundleExecutable</key><string>NodusRemoteDeployTest</string>
+<key>CFBundleIdentifier</key><string>one.zjz.nodus-remote-deploy-test</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 </dict></plist>`)
 	if err := os.WriteFile(filepath.Join(appPath, "Info.plist"), infoPlist, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	executable := filepath.Join(appPath, "DeployLinkTest")
+	executable := filepath.Join(appPath, "NodusRemoteDeployTest")
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestValidateAppAcceptsSignedBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bundle.BundleIdentifier != "one.zjz.deploy-link-test" || bundle.Path != appPath {
+	if bundle.BundleIdentifier != "one.zjz.nodus-remote-deploy-test" || bundle.Path != appPath {
 		t.Fatalf("bundle = %#v", bundle)
 	}
 }
