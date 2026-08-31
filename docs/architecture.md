@@ -1,6 +1,6 @@
 # Nodus Remote Deploy Architecture
 
-Document revision: `1.0.0`
+Document revision: `1.0.1`
 
 Revised: `2026-08-31`
 
@@ -98,3 +98,26 @@ Git under `~/Library/Application Support/Nodus Remote Deploy/`.
 - Success requires post-install bundle readback.
 - No command changes Tailscale ACLs, enables Developer Mode, edits Apple's USB
   pairing database, republishes Bonjour, or falls back to TestFlight.
+
+## v1.0.0 runtime acceptance
+
+The canonical identity cutover passed on 2026-08-31 from source commit
+`2c3a1ad72747c56aa8d8d54c44a2f2296da31cd1`:
+
+- the pinned Link Core package tests, repository unit tests, race tests and
+  `go vet` passed;
+- the installed `nodus-remote-deploy` reported version `1.0.0`, the pinned Link
+  Core commit and patch digest, and its binary SHA-256 was
+  `21d34fd59e5cf8903c3017d67480e08a895b836ed8abc190c99fa5057834baa5`;
+- the schema-4 profile was copied byte-for-byte with mode `0600`; `doctor`
+  accepted build metadata, profile, pairing record, Tailnet peer and the live
+  RemotePairing listener;
+- `com.zjz.nodus-remote-deploy` acquired generation 1 and became `active` as
+  the only loaded deployment job and process;
+- the new daemon reinstalled the exact signed app already present on the phone,
+  reached `InstallComplete` and `DataComplete`, performed its own bundle
+  readback and advanced `install_count` to 1;
+- CoreDevice independently read back the same product, bundle, version and
+  build, then completed a terminate-existing foreground launch;
+- only after that acceptance, the superseded LaunchAgent plist and runtime
+  root were removed. The pairing record remained at its external authority.
