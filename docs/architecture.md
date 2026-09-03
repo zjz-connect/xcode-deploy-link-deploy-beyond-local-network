@@ -1,6 +1,6 @@
 # Nodus Remote Deploy Architecture
 
-Document revision: `1.1.0`
+Document revision: `1.1.1`
 
 Revised: `2026-09-03`
 
@@ -115,6 +115,15 @@ successful removal. The command owns no archive, backup, wildcard, bulk-delete,
 or implicit current-app policy. Callers must treat successful removal as
 irreversible local-data deletion and reinstall the desired signed app
 explicitly.
+
+Source commit `4aef0a7` implements this contract as Nodus Remote Deploy 1.1.0.
+Repository unit tests, race tests, `go vet`, the pinned Link Core `ios`,
+`tunnel`, `installationproxy`, and `zipconduit` tests, and an independent
+versioned binary build passed. The installed LaunchAgent runs the 1.1.0 binary.
+Its first physical cold-removal attempt remains pending because iOS had not
+reopened the configured RemotePairing listener after the preceding warm
+generation was intentionally closed; no app or data container was removed in
+that waiting state.
 
 ## v1.0.0 runtime acceptance
 
