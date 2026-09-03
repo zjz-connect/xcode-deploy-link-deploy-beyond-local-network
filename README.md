@@ -140,6 +140,20 @@ reported only after streaming zip conduit completes and InstallationProxy reads
 the installed bundle back from the iPhone. Later builds reuse the same warm
 generation.
 
+For an explicit cold-install test, remove exactly one bundle through the same
+warm bridge before reinstalling it:
+
+```sh
+"$nodus_remote_deploy" uninstall \
+  --profile "$profile" \
+  com.example.YourApp
+```
+
+`uninstall` is destructive: iOS removes both the selected app and its local
+data container. The command accepts one exact bundle identifier, is serialized
+with installs, and succeeds only after InstallationProxy confirms that bundle
+is absent. It never selects an app implicitly or accepts a wildcard.
+
 Useful commands:
 
 ```sh
@@ -295,6 +309,19 @@ bridge 激活后，iPhone 可以切换到 5G。安装已签名的构建结果：
 短生命周期 CLI 会把请求交给常驻 daemon。只有 streaming zip conduit 完成，且
 InstallationProxy 从 iPhone 回读到该 bundle 后，命令才会报告成功。之后的构建
 会复用同一个 warm generation。
+
+如需进行明确的冷安装测试，可先通过同一条 warm bridge 删除一个精确 bundle，
+再重新安装：
+
+```sh
+"$nodus_remote_deploy" uninstall \
+  --profile "$profile" \
+  com.example.YourApp
+```
+
+`uninstall` 是破坏性操作：iOS 会同时删除指定 App 及其本地数据容器。命令只接受
+一个精确 bundle identifier，与安装操作串行执行，并且只有 InstallationProxy
+确认该 bundle 已不存在时才会成功。它不会隐式选择 App，也不接受通配符。
 
 常用命令：
 

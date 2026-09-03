@@ -1,16 +1,16 @@
 # Nodus Remote Deploy Architecture
 
-Document revision: `1.0.1`
+Document revision: `1.1.0`
 
-Revised: `2026-08-31`
+Revised: `2026-09-03`
 
 ## Decision
 
 Nodus Remote Deploy is one unprivileged, launchd-managed Go daemon on macOS. It owns one
 verified RemotePairing control connection, one TLS-PSK data connection, one
-userspace RSD topology, and serialized app-install requests for one configured
-iPhone. Tailscale supplies stable unicast reachability but is not pairing,
-session, or installation authority.
+userspace RSD topology, and serialized app lifecycle requests for one
+configured iPhone. Tailscale supplies stable unicast reachability but is not
+pairing, session, installation, or removal authority.
 
 The CLI is a short-lived client. It communicates only through a profile-scoped,
 owner-only Unix socket. No control API is exposed over TCP.
@@ -36,7 +36,8 @@ daemon or compatibility path.
 | Pair verification | The configured owner-only RemotePairing record |
 | Warm session | The long-running Nodus Remote Deploy daemon |
 | App transfer | Streaming zip conduit over the live RSD session |
-| Success readback | InstallationProxy bundle enumeration |
+| App removal | InstallationProxy for one explicit bundle identifier |
+| Success readback | InstallationProxy bundle presence or absence enumeration |
 
 Nodus Remote Deploy consumes an existing signed `.app`. It does not become an Xcode Run
 Destination, select a signing team, modify a project, or weaken iOS signature
@@ -45,13 +46,14 @@ validation.
 ## Session lifecycle
 
 ```text
-waiting_for_listener -> connecting -> active -> installing -> active
-                              |          |            |
-                              |          +------------+ service failure
-                              |                       v
-                              +-----------------> recovering
-                                                       |
-                                    later install -----+----> active
+waiting_for_listener -> connecting -> active -> installing   -> active
+                                      |    \-> uninstalling -> active
+                              |       |            |
+                              |       +------------+ service failure
+                              |                    v
+                              +--------------> recovering
+                                                    |
+                       later lifecycle operation ---+----> active
 
 outer packet pump terminates -> session_lost -> waiting_for_listener
 ```
@@ -93,11 +95,26 @@ Git under `~/Library/Application Support/Nodus Remote Deploy/`.
 - Pairing records and profiles must be owner-only regular files.
 - Pairing private key material is never copied into a profile, log, or response.
 - The RSD-reported identifier must match the configured RemotePairing identifier.
-- Install requests are serialized and accept only an existing, code-signed
-  `.app` directory.
-- Success requires post-install bundle readback.
+- Install and uninstall requests share one serialization boundary. Install
+  accepts only an existing code-signed `.app`; uninstall accepts only one exact
+  syntactically valid bundle identifier and never a wildcard.
+- Success requires post-install presence readback or post-uninstall absence
+  readback.
 - No command changes Tailscale ACLs, enables Developer Mode, edits Apple's USB
   pairing database, republishes Bonjour, or falls back to TestFlight.
+
+## v1.1.0 cold-validation contract
+
+The `uninstall --profile <profile> <bundle-id>` command removes one explicitly
+named development app and its iOS data container through the daemon-owned warm
+session. The short-lived CLI never opens a second RemotePairing tunnel. The
+owner-only control request, InstallationProxy removal, and absence readback all
+run under the same operation lock as installation. A service failure enters
+`recovering` while retaining the outer tunnel; it is never reported as a
+successful removal. The command owns no archive, backup, wildcard, bulk-delete,
+or implicit current-app policy. Callers must treat successful removal as
+irreversible local-data deletion and reinstall the desired signed app
+explicitly.
 
 ## v1.0.0 runtime acceptance
 
