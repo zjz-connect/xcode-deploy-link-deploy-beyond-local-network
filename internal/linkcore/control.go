@@ -14,44 +14,48 @@ import (
 )
 
 type Request struct {
-	Command string `json:"command"`
-	AppPath string `json:"app_path,omitempty"`
+	Command          string `json:"command"`
+	AppPath          string `json:"app_path,omitempty"`
+	BundleIdentifier string `json:"bundle_identifier,omitempty"`
 }
 
 type Response struct {
-	OK            bool   `json:"ok"`
-	Final         bool   `json:"final"`
-	Event         string `json:"event,omitempty"`
-	State         string `json:"state,omitempty"`
-	Generation    uint64 `json:"generation,omitempty"`
-	SessionLosses uint64 `json:"session_loss_count,omitempty"`
-	InstallCount  uint64 `json:"install_count,omitempty"`
-	Percent       int    `json:"percent,omitempty"`
-	Status        string `json:"status,omitempty"`
-	ErrorCode     string `json:"error_code,omitempty"`
-	Error         string `json:"error,omitempty"`
-	LastErrorCode string `json:"last_error_code,omitempty"`
-	ObservedAt    string `json:"observed_at,omitempty"`
+	OK             bool   `json:"ok"`
+	Final          bool   `json:"final"`
+	Event          string `json:"event,omitempty"`
+	State          string `json:"state,omitempty"`
+	Generation     uint64 `json:"generation,omitempty"`
+	SessionLosses  uint64 `json:"session_loss_count,omitempty"`
+	InstallCount   uint64 `json:"install_count,omitempty"`
+	UninstallCount uint64 `json:"uninstall_count,omitempty"`
+	Percent        int    `json:"percent,omitempty"`
+	Status         string `json:"status,omitempty"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	Error          string `json:"error,omitempty"`
+	LastErrorCode  string `json:"last_error_code,omitempty"`
+	ObservedAt     string `json:"observed_at,omitempty"`
 }
 
 type Snapshot struct {
-	State         string
-	Generation    uint64
-	SessionLosses uint64
-	InstallCount  uint64
-	LastErrorCode string
+	State          string
+	Generation     uint64
+	SessionLosses  uint64
+	InstallCount   uint64
+	UninstallCount uint64
+	LastErrorCode  string
 }
 
 func snapshotResponse(snapshot Snapshot) Response {
 	return Response{
-		OK:            true,
-		Final:         true,
-		Event:         "status",
-		State:         snapshot.State,
-		Generation:    snapshot.Generation,
-		SessionLosses: snapshot.SessionLosses,
-		InstallCount:  snapshot.InstallCount,
-		LastErrorCode: snapshot.LastErrorCode,
+		OK:             true,
+		Final:          true,
+		Event:          "status",
+		State:          snapshot.State,
+		Generation:     snapshot.Generation,
+		SessionLosses:  snapshot.SessionLosses,
+		InstallCount:   snapshot.InstallCount,
+		UninstallCount: snapshot.UninstallCount,
+		LastErrorCode:  snapshot.LastErrorCode,
 	}
 }
 
@@ -155,12 +159,16 @@ func writeOneResponse(writer io.Writer, response Response) error {
 func validateCommand(request Request) error {
 	switch request.Command {
 	case "status", "stop":
-		if request.AppPath != "" {
-			return coded("control_request_invalid", fmt.Sprintf("%s does not accept app_path", request.Command), nil)
+		if request.AppPath != "" || request.BundleIdentifier != "" {
+			return coded("control_request_invalid", fmt.Sprintf("%s does not accept an operation target", request.Command), nil)
 		}
 	case "install":
-		if request.AppPath == "" {
+		if request.AppPath == "" || request.BundleIdentifier != "" {
 			return coded("control_request_invalid", "install requires app_path", nil)
+		}
+	case "uninstall":
+		if request.AppPath != "" || !validBundleIdentifier(request.BundleIdentifier) {
+			return coded("control_request_invalid", "uninstall requires one exact valid bundle_identifier", nil)
 		}
 	default:
 		return coded("control_request_invalid", "unknown command", nil)

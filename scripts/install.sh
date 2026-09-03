@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-module_version="1.0.0"
+module_version="1.1.0"
 go_version="1.26.5"
 go_archive_sha256="efb87ff28af9a188d0536ef5d42e63dd52ba8263cd7344a993cc48dd11dedb6a"
 link_core_commit="3ebc297691a9e364772aef027744ebc0c49421a5"

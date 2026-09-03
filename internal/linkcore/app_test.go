@@ -6,8 +6,33 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
+
+func TestValidBundleIdentifier(t *testing.T) {
+	accepted := []string{"lyo.nodus", "com.example.App-2", "one.zjz.workspace"}
+	for _, value := range accepted {
+		if !validBundleIdentifier(value) {
+			t.Fatalf("valid bundle identifier rejected: %q", value)
+		}
+	}
+	rejected := []string{
+		"",
+		"single",
+		"com..example",
+		"com.example.*",
+		"com.example app",
+		"-com.example",
+		"com.example-",
+		strings.Repeat("a", 256) + ".example",
+	}
+	for _, value := range rejected {
+		if validBundleIdentifier(value) {
+			t.Fatalf("invalid bundle identifier accepted: %q", value)
+		}
+	}
+}
 
 func TestValidateAppAcceptsSignedBundle(t *testing.T) {
 	if runtime.GOOS != "darwin" {

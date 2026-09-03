@@ -8,12 +8,13 @@ import (
 type statusReader func(context.Context) (Response, error)
 
 type watchSignature struct {
-	state         string
-	generation    uint64
-	sessionLosses uint64
-	installCount  uint64
-	lastErrorCode string
-	errorCode     string
+	state          string
+	generation     uint64
+	sessionLosses  uint64
+	installCount   uint64
+	uninstallCount uint64
+	lastErrorCode  string
+	errorCode      string
 }
 
 func isWarmState(response Response) bool {
@@ -21,7 +22,7 @@ func isWarmState(response Response) bool {
 		return false
 	}
 	switch response.State {
-	case StateActive, StateRecovering, StateInstalling:
+	case StateActive, StateRecovering, StateInstalling, StateUninstalling:
 		return true
 	default:
 		return false
@@ -86,11 +87,12 @@ func watchStatus(ctx context.Context, interval time.Duration, read statusReader,
 		}
 
 		signature := watchSignature{
-			state:         response.State,
-			generation:    response.Generation,
-			sessionLosses: response.SessionLosses,
-			installCount:  response.InstallCount,
-			lastErrorCode: response.LastErrorCode,
+			state:          response.State,
+			generation:     response.Generation,
+			sessionLosses:  response.SessionLosses,
+			installCount:   response.InstallCount,
+			uninstallCount: response.UninstallCount,
+			lastErrorCode:  response.LastErrorCode,
 		}
 		if !havePrevious || signature != previous {
 			response.OK = true

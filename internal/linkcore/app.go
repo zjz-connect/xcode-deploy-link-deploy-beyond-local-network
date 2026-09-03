@@ -20,6 +20,30 @@ type appInfoPlist struct {
 	BundleIdentifier string `plist:"CFBundleIdentifier"`
 }
 
+func validBundleIdentifier(value string) bool {
+	if len(value) < 3 || len(value) > 255 {
+		return false
+	}
+	components := strings.Split(value, ".")
+	if len(components) < 2 {
+		return false
+	}
+	for _, component := range components {
+		if component == "" || component[0] == '-' || component[len(component)-1] == '-' {
+			return false
+		}
+		for _, character := range component {
+			if (character < 'a' || character > 'z') &&
+				(character < 'A' || character > 'Z') &&
+				(character < '0' || character > '9') &&
+				character != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func ValidateApp(ctx context.Context, path string) (AppBundle, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {

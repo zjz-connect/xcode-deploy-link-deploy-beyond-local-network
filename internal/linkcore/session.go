@@ -168,6 +168,38 @@ func (s *Session) Install(ctx context.Context, app AppBundle, progress func(int,
 	return coded("install_failed", "installed bundle was absent from InstallationProxy readback", errors.New(app.BundleIdentifier))
 }
 
+func (s *Session) Uninstall(ctx context.Context, bundleIdentifier string) error {
+	proxy, err := installationproxy.New(s.device)
+	if err != nil {
+		return coded("uninstall_failed", "could not connect to InstallationProxy", err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		result <- proxy.Uninstall(bundleIdentifier)
+	}()
+	select {
+	case <-ctx.Done():
+		proxy.Close()
+		return coded("uninstall_failed", "uninstallation timed out", ctx.Err())
+	case err := <-result:
+		proxy.Close()
+		if err != nil {
+			return coded("uninstall_failed", "iOS rejected or interrupted app removal", err)
+		}
+	}
+
+	apps, err := s.browseUserApps(ctx)
+	if err != nil {
+		return coded("uninstall_failed", "post-uninstall InstallationProxy readback failed", err)
+	}
+	for _, installed := range apps {
+		if installed.CFBundleIdentifier() == bundleIdentifier {
+			return coded("uninstall_failed", "removed bundle remained present in InstallationProxy readback", errors.New(bundleIdentifier))
+		}
+	}
+	return nil
+}
+
 func (s *Session) String() string {
 	return fmt.Sprintf("session<userspace=%t>", s.device.UserspaceTUN)
 }

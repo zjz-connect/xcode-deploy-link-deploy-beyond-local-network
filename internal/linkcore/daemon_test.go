@@ -11,9 +11,10 @@ import (
 )
 
 type fakeSession struct {
-	closed  atomic.Int32
-	done    chan error
-	install func(context.Context, AppBundle, func(int, string)) error
+	closed    atomic.Int32
+	done      chan error
+	install   func(context.Context, AppBundle, func(int, string)) error
+	uninstall func(context.Context, string) error
 }
 
 func (s *fakeSession) Close() error {
@@ -28,6 +29,13 @@ func (s *fakeSession) Done() <-chan error {
 func (s *fakeSession) Install(ctx context.Context, app AppBundle, progress func(int, string)) error {
 	if s.install != nil {
 		return s.install(ctx, app, progress)
+	}
+	return nil
+}
+
+func (s *fakeSession) Uninstall(ctx context.Context, bundleIdentifier string) error {
+	if s.uninstall != nil {
+		return s.uninstall(ctx, bundleIdentifier)
 	}
 	return nil
 }
@@ -136,6 +144,57 @@ func TestDaemonSerializesInstalls(t *testing.T) {
 	}
 }
 
+func TestDaemonSerializesInstallAndUninstall(t *testing.T) {
+	daemon := testDaemon(t)
+	daemon.validateApp = func(context.Context, string) (AppBundle, error) {
+		return AppBundle{Path: "/tmp/Test.app", BundleIdentifier: "one.example.test"}, nil
+	}
+	var running atomic.Int32
+	var maximum atomic.Int32
+	operation := func() {
+		current := running.Add(1)
+		for {
+			previous := maximum.Load()
+			if current <= previous || maximum.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		running.Add(-1)
+	}
+	session := &fakeSession{
+		install: func(context.Context, AppBundle, func(int, string)) error {
+			operation()
+			return nil
+		},
+		uninstall: func(context.Context, string) error {
+			operation()
+			return nil
+		},
+	}
+	daemon.session = session
+	daemon.state = StateActive
+
+	results := make(chan error, 2)
+	go func() {
+		results <- daemon.install(context.Background(), "/tmp/Test.app", func(int, string) {})
+	}()
+	go func() {
+		results <- daemon.uninstall(context.Background(), "one.example.test")
+	}()
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := maximum.Load(); got != 1 {
+		t.Fatalf("maximum concurrent lifecycle operations = %d, want 1", got)
+	}
+	if got := daemon.Snapshot(); got.State != StateActive || got.InstallCount != 1 || got.UninstallCount != 1 {
+		t.Fatalf("snapshot = %#v", got)
+	}
+}
+
 func TestDaemonRetainsSessionWhenInstallServiceFails(t *testing.T) {
 	daemon := testDaemon(t)
 	daemon.validateApp = func(context.Context, string) (AppBundle, error) {
@@ -161,6 +220,31 @@ func TestDaemonRetainsSessionWhenInstallServiceFails(t *testing.T) {
 	}
 	if daemon.currentSession() != session {
 		t.Fatal("failed install discarded the warm outer session")
+	}
+}
+
+func TestDaemonRetainsSessionWhenUninstallServiceFails(t *testing.T) {
+	daemon := testDaemon(t)
+	session := &fakeSession{
+		uninstall: func(context.Context, string) error {
+			return coded("uninstall_failed", "removal stalled", context.DeadlineExceeded)
+		},
+	}
+	daemon.session = session
+	daemon.state = StateActive
+	daemon.generation = 1
+
+	if err := daemon.uninstall(context.Background(), "one.example.test"); errorCode(err) != "uninstall_failed" {
+		t.Fatalf("uninstall error = %v, want uninstall_failed", err)
+	}
+	if got := daemon.Snapshot(); got.State != StateRecovering || got.LastErrorCode != "service_unresponsive" || got.Generation != 1 {
+		t.Fatalf("recovering snapshot = %#v", got)
+	}
+	if got := session.closed.Load(); got != 0 {
+		t.Fatalf("close count after uninstall timeout = %d, want 0", got)
+	}
+	if daemon.currentSession() != session {
+		t.Fatal("failed uninstall discarded the warm outer session")
 	}
 }
 
@@ -205,6 +289,20 @@ func TestDaemonServeControlSocketLifecycle(t *testing.T) {
 	}
 	if len(responses) != 1 || !responses[0].Final || responses[0].Event != "status" {
 		t.Fatalf("responses = %#v", responses)
+	}
+	responses = nil
+	if err := Call(callCtx, daemon.profilePath, Request{
+		Command:          "uninstall",
+		BundleIdentifier: "one.example.test",
+	}, func(response Response) {
+		responses = append(responses, response)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(responses) != 2 || responses[0].Event != "accepted" ||
+		!responses[1].Final || responses[1].Event != "uninstalled" ||
+		responses[1].UninstallCount != 1 {
+		t.Fatalf("uninstall responses = %#v", responses)
 	}
 	if err := Call(callCtx, daemon.profilePath, Request{Command: "stop"}, nil); err != nil {
 		t.Fatal(err)

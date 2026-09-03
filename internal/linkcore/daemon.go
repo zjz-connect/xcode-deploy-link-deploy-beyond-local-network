@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	StateWaiting    = "waiting_for_listener"
-	StateConnecting = "connecting"
-	StateActive     = "active"
-	StateRecovering = "recovering"
-	StateInstalling = "installing"
-	StateLost       = "session_lost"
-	StateStopping   = "stopping"
+	StateWaiting      = "waiting_for_listener"
+	StateConnecting   = "connecting"
+	StateActive       = "active"
+	StateRecovering   = "recovering"
+	StateInstalling   = "installing"
+	StateUninstalling = "uninstalling"
+	StateLost         = "session_lost"
+	StateStopping     = "stopping"
 )
 
 type Daemon struct {
@@ -28,21 +29,23 @@ type Daemon struct {
 	openSession func(context.Context, Config) (sessionHandle, error)
 	validateApp func(context.Context, string) (AppBundle, error)
 
-	mu            sync.RWMutex
-	operationMu   sync.Mutex
-	state         string
-	generation    uint64
-	sessionLosses uint64
-	installCount  uint64
-	lastErrorCode string
-	session       sessionHandle
-	cancel        context.CancelFunc
+	mu             sync.RWMutex
+	operationMu    sync.Mutex
+	state          string
+	generation     uint64
+	sessionLosses  uint64
+	installCount   uint64
+	uninstallCount uint64
+	lastErrorCode  string
+	session        sessionHandle
+	cancel         context.CancelFunc
 }
 
 type sessionHandle interface {
 	Close() error
 	Done() <-chan error
 	Install(context.Context, AppBundle, func(int, string)) error
+	Uninstall(context.Context, string) error
 }
 
 func NewDaemon(config Config, profilePath string) (*Daemon, error) {
@@ -66,11 +69,12 @@ func (d *Daemon) Snapshot() Snapshot {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return Snapshot{
-		State:         d.state,
-		Generation:    d.generation,
-		SessionLosses: d.sessionLosses,
-		InstallCount:  d.installCount,
-		LastErrorCode: d.lastErrorCode,
+		State:          d.state,
+		Generation:     d.generation,
+		SessionLosses:  d.sessionLosses,
+		InstallCount:   d.installCount,
+		UninstallCount: d.uninstallCount,
+		LastErrorCode:  d.lastErrorCode,
 	}
 }
 
@@ -203,6 +207,30 @@ func (d *Daemon) install(ctx context.Context, appPath string, progress func(int,
 	return nil
 }
 
+func (d *Daemon) uninstall(ctx context.Context, bundleIdentifier string) error {
+	d.operationMu.Lock()
+	defer d.operationMu.Unlock()
+	session := d.currentSession()
+	if session == nil {
+		return coded("session_not_active", "daemon is waiting for a usable RemotePairing listener", nil)
+	}
+	d.setState(StateUninstalling, "")
+	uninstallCtx, cancel := context.WithTimeout(ctx, d.config.InstallTimeout())
+	err := session.Uninstall(uninstallCtx, bundleIdentifier)
+	cancel()
+	if err != nil {
+		d.setState(StateRecovering, "service_unresponsive")
+		slog.Warn("Nodus Remote Deploy uninstall service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		return err
+	}
+	d.mu.Lock()
+	d.uninstallCount++
+	d.state = StateActive
+	d.lastErrorCode = ""
+	d.mu.Unlock()
+	return nil
+}
+
 func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 	defer connection.Close()
 	request, err := readRequest(connection)
@@ -240,6 +268,21 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 			State:        snapshot.State,
 			Generation:   snapshot.Generation,
 			InstallCount: snapshot.InstallCount,
+		})
+	case "uninstall":
+		_ = encoder.Encode(Response{OK: true, Final: false, Event: "accepted", State: d.Snapshot().State})
+		if err := d.uninstall(ctx, request.BundleIdentifier); err != nil {
+			_ = encoder.Encode(errorResponse(err))
+			return
+		}
+		snapshot := d.Snapshot()
+		_ = encoder.Encode(Response{
+			OK:             true,
+			Final:          true,
+			Event:          "uninstalled",
+			State:          snapshot.State,
+			Generation:     snapshot.Generation,
+			UninstallCount: snapshot.UninstallCount,
 		})
 	}
 }
