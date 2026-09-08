@@ -352,3 +352,9 @@ Development revision 1.2.0-design.1 adds a daemon screenshot operation using the
 existing go-ios dependency and pairing identity. It is not installed into the
 live service. See [Remote Capture](docs/remote-capture.md) for the zero-repairing
 and live-process activation boundaries.
+
+The capture candidate uses raw PNG bodies after a bounded JSON result header.
+Build and tests are now separate from installation: `scripts/build.sh` writes
+only the local `.build/nodus-remote-deploy`; `scripts/test.sh` never installs it.
+The dynamic acquisition route is native XCTest, with WebDriverAgent excluded.
+See [Remote Capture](docs/remote-capture.md) revision 1.2.0-design.2.

@@ -1,71 +1,82 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.1
-Status: isolated screenshot implementation; physical capture pending
+Document revision: 1.2.0-design.2
+Candidate version: 1.2.0-capture-preview.2
+Status: isolated implementation; activation and physical capture pending
 
-## Scope
+## Direct acquisition route
 
-Add a screenshot operation to the existing daemon-owned Session using pinned
-go-ios Instruments. The candidate CLI sends the new screenshot request over the
-existing owner-only Unix control socket. The daemon returns original PNG bytes;
-the client validates the PNG and saves a new owner-only file without cropping,
-resizing or overwriting existing output. No WebDriverAgent is installed.
+Deploy Link already embeds pinned Link Core (go-ios). Use its Instruments
+screenshot service on the daemon-owned, verified DeviceEntry and userspace tunnel.
+Static capture returns the complete original PNG. Dynamic handbook acquisition
+will use the signed Lyo Swift XCTest runner over testmanagerd, with named PNG
+attachments and structured test results. WebDriverAgent is excluded from this
+route; no WDA installation, server, HTTP bridge or general Agent control is planned.
+Remote XCTest still needs an RSD OS-version path instead of local usbmuxd and
+an attachment/result adapter before existing capture promotion can consume it.
 
-Screenshots use the existing verified device and userspace tunnel. They neither
-open a new RemotePairing session nor read or modify the pairing record. Refuse
-a concurrent install/uninstall instead of running capture later after a timeout.
-Bound the request and close only the inner screenshot service on cancellation.
-A screenshot failure must not reset the outer tunnel or installation status.
+## Screenshot protocol and ownership
 
-## Pairing and live-process boundary
+The owner-only Unix socket carries one JSON final-result header terminated by
+one newline, followed by exactly image_bytes raw PNG bytes on success. PNG is
+not Base64-encoded or duplicated in JSON. The client uses the decoder's buffered
+bytes and the remaining socket stream; rejects unexpected, oversized or truncated
+bodies; validates the full PNG once; and creates one owner-only output without
+overwriting existing files. Payloads are capped at 64 MiB and decoded images at
+16 megapixels, with each dimension at most 16,384. No cropping or re-encoding.
 
-The live daemon, LaunchAgent, profile and pairing record remain untouched during
-this experiment. The branch is capture-existing-tunnel in a separate Git worktree.
-Build/test directly with the cached patched dependency; do not run scripts/test.sh
-because it invokes scripts/install.sh and changes the installed binary.
+The daemon takes the screenshot and captures its generation metadata under the
+same operation lock. It refuses capture while another device operation owns the
+session. A capture error neither closes nor reacquires the outer pairing tunnel,
+nor changes installation readiness. Cancellation closes only the inner screenshot
+service, once. A bounded socket write prevents a stalled client from keeping a
+completed screenshot response open indefinitely. Service construction still uses
+the pinned library's own bounded connection/channel operations; it is not a
+context-aware constructor, and must be revalidated on the physical device.
 
-The existing installed daemon accepts only status, install, uninstall and stop.
-It does not expose its negotiated remote IPv6/RSD endpoint and cannot hot-load
-a screenshot handler. A new client can verify the old daemon rejects the command,
-without restarting it. Do not extract process memory, scan ports, guess endpoints
-or use stale logs to work around this explicit protocol boundary.
+## Build, test and activation
 
-Updating the daemon is a separate activation step. It can use the same saved
-RemotePairing identity without manual pairing. Its warm connection still closes
-on process restart; reacquiring on 5G alone is not guaranteed, so activation must
-happen when the iPhone exposes its listener on Wi-Fi.
+scripts/build.sh prepares the pinned dependency/cache and produces only the
+worktree's .build/nodus-remote-deploy and .build/go.work. Its generated build
+environment is also local to this worktree, so two checkouts cannot silently
+reuse each other's Go workspace. It never replaces the installed executable.
+scripts/test.sh invokes build and the relevant dependency/module/race/vet checks.
+Only scripts/install.sh copies the candidate into the installed binary directory.
+It never starts or restarts the LaunchAgent; activation remains a separate action.
 
-## Validation
+The current user instruction requires an explicit later restart instruction after
+app bug confirmation. Do not install or restart Deploy Link in this turn. Build
+and test in capture-existing-tunnel. Preserve the live daemon, LaunchAgent, profile
+and pairing record. The existing daemon has no screenshot handler and cannot
+hot-load one. This protocol changes the unactivated candidate, without adding a
+compatibility path to the old candidate format.
 
-Verify PNG preservation, refusal to overwrite output, busy-session rejection and
-that screenshot failure never closes the Session or changes install readiness.
-Build the candidate into .build only, run the device-free suite and race checks,
-then send one screenshot request to the old daemon to verify its capability
-boundary and unchanged generation. Do not claim a physical screenshot from
-a rejected request.
+A future activation reuses the saved RemotePairing identity without manual
+pairing. Restart still closes the warm connection; pure-5G reacquisition is not
+guaranteed, so activate with the phone's RemotePairing listener available on Wi-Fi.
 
-## Next capability
+## Verification
 
-Remote XCTest can reuse testmanagerd and the signed Lyo Swift UI-test runner.
-It first needs remote OS-version lookup instead of local usbmuxd, named PNG
-attachment/results export, and a request lifecycle that owns the test session
-without owning the tunnel. WebDriverAgent is optional for later interactive
-Agent control and is not necessary for the existing deterministic capture tests.
+Cover exact binary PNG round trips, truncated/oversized responses, image bounds,
+refusal to overwrite files, busy-session refusal, and capture errors that leave
+the existing session and generation intact. Validate build/test without any
+installed executable replacement. These tests use fake sessions; physical
+screenshot and dynamic capture acceptance remain pending service activation.
 
-## Candidate evidence — 2026-09-08
+The previous candidate probe returned control_request_invalid on the installed
+daemon and created no output. Its before/after status stayed active, generation 2,
+session_loss_count 1. Do not repeat an unsupported screenshot probe for this revision.
 
-Candidate version: 1.2.0-capture-preview. The device-free suite, including a
-Unix-socket screenshot round trip and byte-identical PNG output, passed with
-`go test -race ./...`. `go vet ./...` and the candidate CLI build passed.
-These tests use a fake device Session and are not physical capture acceptance.
+## Candidate revision 2 evidence — 2026-09-08
 
-One candidate screenshot request to the existing installed daemon returned
-`control_request_invalid: unknown command` and created no output. Status before
-and after remained active, generation 2, session_loss_count 1, install_count 40.
-The daemon was not restarted and no pairing record or LaunchAgent was changed.
-The raw bounded protocol evidence is local in .build/live-probe.json.
+scripts/test.sh completed successfully: candidate build/sign, relevant pinned
+Link Core package tests, module tests, race checks and go vet all passed.
+The binary round trip uses a PNG larger than the decoder read-ahead buffer;
+the saved bytes match the source exactly. Frame and decoded-size rejection
+checks passed. The local log is .build/capture-optimized-tests.log.
 
-The existing dependency already contains go-ios screenshot support; this branch
-adds the missing application command and Session integration. No dependency fork
-or new pairing mechanism is introduced. Physical screenshot acceptance remains
-pending activation of this candidate; dynamic XCTest acquisition is a later step.
+The installed binary fingerprint stayed unchanged through candidate build and
+verification. The live service retained PID 957, generation 2, session_loss_count 1.
+Lyo Swift iOS 0.14.2 was installed separately using that existing service, whose
+final status was active, install_count 44. No Deploy Link installation or restart
+was performed. Physical screenshot capture and dynamic XCTest remain unaccepted.

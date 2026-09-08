@@ -147,3 +147,12 @@ The canonical identity cutover passed on 2026-08-31 from source commit
   build, then completed a terminate-existing foreground launch;
 - only after that acceptance, the superseded LaunchAgent plist and runtime
   root were removed. The pairing record remained at its external authority.
+
+## v1.2.0 capture candidate, design revision 2
+
+Capture reuses the existing verified Session and returns raw PNG bytes over the
+local control socket. The generation is recorded while the operation lock is
+held. Build/test artifacts and the Go workspace belong to the current checkout;
+installation and service activation are separate operations. The native XCTest
+route replaces the earlier optional WebDriverAgent direction. The installed
+service remains at its existing revision until explicit user activation.

@@ -1,7 +1,6 @@
 package linkcore
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,7 +19,8 @@ type Request struct {
 }
 
 type Response struct {
-	ScreenshotPNG  []byte `json:"screenshot_png,omitempty"`
+	ScreenshotPNG  []byte `json:"-"`
+	ImageBytes     int    `json:"image_bytes,omitempty"`
 	OK             bool   `json:"ok"`
 	Final          bool   `json:"final"`
 	Event          string `json:"event,omitempty"`
@@ -118,17 +118,29 @@ func Call(ctx context.Context, profilePath string, request Request, onResponse f
 		return coded("nodus_remote_deploy_not_running", "Nodus Remote Deploy does not answer on the profile control socket", err)
 	}
 	defer connection.Close()
+	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stop()
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = connection.SetDeadline(deadline)
 	}
 	if err := json.NewEncoder(connection).Encode(request); err != nil {
 		return coded("control_request_failed", "could not send control request", err)
 	}
-	decoder := json.NewDecoder(bufio.NewReader(connection))
+	decoder := json.NewDecoder(io.LimitReader(connection, 1<<20))
 	for {
 		var response Response
 		if err := decoder.Decode(&response); err != nil {
 			return coded("control_response_failed", "daemon response ended before a final result", err)
+		}
+		if response.ImageBytes != 0 || (response.OK && response.Event == "screenshot") {
+			if request.Command != "screenshot" || !response.OK || !response.Final || response.Event != "screenshot" {
+				return coded("control_response_failed", "unexpected screenshot body", nil)
+			}
+			data, err := readScreenshotBody(io.MultiReader(decoder.Buffered(), connection), response.ImageBytes)
+			if err != nil {
+				return err
+			}
+			response.ScreenshotPNG = data
 		}
 		if onResponse != nil {
 			onResponse(response)
@@ -140,6 +152,23 @@ func Call(ctx context.Context, profilePath string, request Request, onResponse f
 			return nil
 		}
 	}
+}
+
+// json.Encoder terminates the header with one newline. Decode can read ahead
+// into the binary body, so Call joins its buffered bytes with the socket.
+func readScreenshotBody(reader io.Reader, size int) ([]byte, error) {
+	if size <= 0 || size > maxScreenshotBytes {
+		return nil, coded("capture_invalid_image", "screenshot payload has an invalid size", nil)
+	}
+	var newline [1]byte
+	if _, err := io.ReadFull(reader, newline[:]); err != nil || newline[0] != '\n' {
+		return nil, coded("control_response_failed", "screenshot header has no newline delimiter", err)
+	}
+	data := make([]byte, size)
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return nil, coded("control_response_failed", "screenshot body is incomplete", err)
+	}
+	return data, nil
 }
 
 type safeEncoder struct {

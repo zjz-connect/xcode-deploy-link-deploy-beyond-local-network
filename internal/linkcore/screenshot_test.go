@@ -3,12 +3,15 @@ package linkcore
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -86,7 +89,7 @@ func TestScreenshotDoesNotReopenOrCloseWarmSession(t *testing.T) {
 		t.Fatal("capture failure changed the warm session")
 	}
 	got, err := d.screenshot(context.Background())
-	if err != nil || !bytes.Equal(got, raw) {
+	if err != nil || !bytes.Equal(got.ScreenshotPNG, raw) || got.Generation != 7 {
 		t.Fatal("subsequent capture did not use the existing session")
 	}
 	if session.closed.Load() != 0 || d.currentSession() != session {
@@ -110,7 +113,22 @@ func TestScreenshotRefusesBusySession(t *testing.T) {
 
 func TestScreenshotControlSocketPreservesImage(t *testing.T) {
 	d := testDaemon(t)
-	raw := samplePNG(t)
+	i := image.NewNRGBA(image.Rect(0, 0, 96, 96))
+	seed := uint32(0x12345678)
+	for offset := range i.Pix {
+		seed ^= seed << 13
+		seed ^= seed >> 17
+		seed ^= seed << 5
+		i.Pix[offset] = byte(seed)
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, i); err != nil {
+		t.Fatal(err)
+	}
+	raw := encoded.Bytes()
+	if len(raw) < 4096 {
+		t.Fatal("fixture must span the decoder read-ahead buffer")
+	}
 	session := &fakeSession{screenshot: func(context.Context) ([]byte, error) { return raw, nil }}
 	d.session, d.state, d.generation = session, StateActive, 7
 	listener, err := prepareUnixListener(d.socketPath)
@@ -148,5 +166,55 @@ func TestScreenshotControlSocketPreservesImage(t *testing.T) {
 	}
 	if session.closed.Load() != 0 || d.Snapshot().State != StateActive {
 		t.Fatal("control round trip affected the tunnel")
+	}
+}
+
+func TestScreenshotBodyRejectsInvalidFrames(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		data string
+		size int
+	}{
+		{"negative", "\n", -1}, {"empty", "\n", 0},
+		{"oversize", "\n", maxScreenshotBytes + 1},
+		{"delimiter", "xabc", 3}, {"truncated", "\nab", 3},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := readScreenshotBody(bytes.NewBufferString(tt.data), tt.size); err == nil {
+				t.Fatal("invalid binary frame accepted")
+			}
+		})
+	}
+}
+
+func TestScreenshotHeaderDoesNotEncodePNG(t *testing.T) {
+	var buffer bytes.Buffer
+	raw := samplePNG(t)
+	result := Response{OK: true, Final: true, Event: "screenshot", ImageBytes: len(raw), ScreenshotPNG: raw}
+	if err := writeOneResponse(&buffer, result); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(buffer.Bytes(), []byte("screenshot_png")) || bytes.Contains(buffer.Bytes(), []byte("iVBOR")) {
+		t.Fatal("binary PNG was encoded into the JSON header")
+	}
+	if !bytes.Contains(buffer.Bytes(), []byte("image_bytes")) {
+		t.Fatal("header lost binary frame length")
+	}
+}
+
+func TestScreenshotRejectsExcessiveDecodedSizeBeforeDecode(t *testing.T) {
+	for _, size := range [][2]uint32{{16385, 1}, {16384, 16384}} {
+		raw := samplePNG(t)
+		binary.BigEndian.PutUint32(raw[16:20], size[0])
+		binary.BigEndian.PutUint32(raw[20:24], size[1])
+		binary.BigEndian.PutUint32(raw[29:33], crc32.ChecksumIEEE(raw[12:29]))
+		path := filepath.Join(t.TempDir(), "screen.png")
+		_, _, err := SaveScreenshot(path, raw)
+		if errorCode(err) != "capture_invalid_image" || !strings.Contains(err.Error(), "bounded PNG") {
+			t.Fatalf("oversized image did not stop at header validation: %v", err)
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("oversized image created output")
+		}
 	}
 }
