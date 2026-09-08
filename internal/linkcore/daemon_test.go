@@ -11,10 +11,18 @@ import (
 )
 
 type fakeSession struct {
-	closed    atomic.Int32
-	done      chan error
-	install   func(context.Context, AppBundle, func(int, string)) error
-	uninstall func(context.Context, string) error
+	screenshot func(context.Context) ([]byte, error)
+	closed     atomic.Int32
+	done       chan error
+	install    func(context.Context, AppBundle, func(int, string)) error
+	uninstall  func(context.Context, string) error
+}
+
+func (s *fakeSession) Screenshot(ctx context.Context) ([]byte, error) {
+	if s.screenshot != nil {
+		return s.screenshot(ctx)
+	}
+	return nil, nil
 }
 
 func (s *fakeSession) Close() error {

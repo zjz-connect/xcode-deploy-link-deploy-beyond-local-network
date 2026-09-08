@@ -345,3 +345,10 @@ Deploy 单元测试、race test 和 `go vet`。所有权与失败边界见
 Nodus Remote Deploy 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
 [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios)，完整归属见
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
+## Isolated remote capture candidate
+
+Development revision 1.2.0-design.1 adds a daemon screenshot operation using the
+existing go-ios dependency and pairing identity. It is not installed into the
+live service. See [Remote Capture](docs/remote-capture.md) for the zero-repairing
+and live-process activation boundaries.

@@ -20,6 +20,7 @@ type Request struct {
 }
 
 type Response struct {
+	ScreenshotPNG  []byte `json:"screenshot_png,omitempty"`
 	OK             bool   `json:"ok"`
 	Final          bool   `json:"final"`
 	Event          string `json:"event,omitempty"`
@@ -158,7 +159,7 @@ func writeOneResponse(writer io.Writer, response Response) error {
 
 func validateCommand(request Request) error {
 	switch request.Command {
-	case "status", "stop":
+	case "status", "stop", "screenshot":
 		if request.AppPath != "" || request.BundleIdentifier != "" {
 			return coded("control_request_invalid", fmt.Sprintf("%s does not accept an operation target", request.Command), nil)
 		}

@@ -42,6 +42,7 @@ type Daemon struct {
 }
 
 type sessionHandle interface {
+	Screenshot(context.Context) ([]byte, error)
 	Close() error
 	Done() <-chan error
 	Install(context.Context, AppBundle, func(int, string)) error
@@ -244,6 +245,14 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 	}
 	encoder := &safeEncoder{encoder: jsonEncoder(connection)}
 	switch request.Command {
+	case "screenshot":
+		data, err := d.screenshot(ctx)
+		if err != nil {
+			_ = encoder.Encode(errorResponse(err))
+			return
+		}
+		snapshot := d.Snapshot()
+		_ = encoder.Encode(Response{OK: true, Final: true, Event: "screenshot", State: snapshot.State, Generation: snapshot.Generation, ScreenshotPNG: data})
 	case "status":
 		_ = encoder.Encode(snapshotResponse(d.Snapshot()))
 	case "stop":

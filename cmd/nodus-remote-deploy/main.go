@@ -205,9 +205,11 @@ func launchAgent(arguments []string) error {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("command required: configure, doctor, serve, status, watch, install, uninstall, stop, launch-agent, version")
+		return errors.New("command required: configure, doctor, serve, status, watch, install, uninstall, stop, screenshot, launch-agent, version")
 	}
 	switch arguments[0] {
+	case "screenshot":
+		return screenshot(arguments[1:])
 	case "configure":
 		return configure(arguments[1:])
 	case "doctor":
