@@ -1,8 +1,8 @@
 # Nodus Remote Deploy Architecture
 
-Document revision: `1.1.1`
+Document revision: `1.2.0-design.3`
 
-Revised: `2026-09-03`
+Revised: `2026-09-08`
 
 ## Decision
 
@@ -119,7 +119,7 @@ explicitly.
 Source commit `4aef0a7` implements this contract as Nodus Remote Deploy 1.1.0.
 Repository unit tests, race tests, `go vet`, the pinned Link Core `ios`,
 `tunnel`, `installationproxy`, and `zipconduit` tests, and an independent
-versioned binary build passed. The installed LaunchAgent runs the 1.1.0 binary.
+versioned binary build passed. At that checkpoint the installed LaunchAgent ran the 1.1.0 binary.
 Its first physical cold-removal attempt remains pending because iOS had not
 reopened the configured RemotePairing listener after the preceding warm
 generation was intentionally closed; no app or data container was removed in
@@ -154,5 +154,16 @@ Capture reuses the existing verified Session and returns raw PNG bytes over the
 local control socket. The generation is recorded while the operation lock is
 held. Build/test artifacts and the Go workspace belong to the current checkout;
 installation and service activation are separate operations. The native XCTest
-route replaces the earlier optional WebDriverAgent direction. The installed
-service remains at its existing revision until explicit user activation.
+route replaces the earlier optional WebDriverAgent direction. On 2026-09-08,
+user-authorized activation replaced the installed executable with capture preview
+3 and restarted the same LaunchAgent without changing its profile or pairing.
+The deployment session recovered; physical screenshot acquisition timed out.
+See Remote Capture for the activation evidence and outstanding capture checks.
+
+## Build metadata authority
+
+Module version and pinned Link Core commit are Go constants consumed directly by
+the CLI. The build script reads the same pinned commit for dependency checkout,
+and injects only the actual downstream patch digest. The version command runs
+the shared metadata validator before returning success, closing the previous
+gap between a passing build/test and a doctor-rejected version.

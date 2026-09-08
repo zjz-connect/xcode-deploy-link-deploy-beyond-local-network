@@ -1,8 +1,8 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.2
-Candidate version: 1.2.0-capture-preview.2
-Status: isolated implementation; activation and physical capture pending
+Document revision: 1.2.0-design.3
+Candidate version: 1.2.0-capture-preview.3
+Status: activated on 2026-09-08; deployment session recovered; physical screenshot timed out
 
 ## Direct acquisition route
 
@@ -44,16 +44,23 @@ scripts/test.sh invokes build and the relevant dependency/module/race/vet checks
 Only scripts/install.sh copies the candidate into the installed binary directory.
 It never starts or restarts the LaunchAgent; activation remains a separate action.
 
-The current user instruction requires an explicit later restart instruction after
-app bug confirmation. Do not install or restart Deploy Link in this turn. Build
-and test in capture-existing-tunnel. Preserve the live daemon, LaunchAgent, profile
-and pairing record. The existing daemon has no screenshot handler and cannot
-hot-load one. This protocol changes the unactivated candidate, without adding a
-compatibility path to the old candidate format.
+The user confirmed the App UI and explicitly authorized replacement/restart on
+2026-09-08 with the iPhone on Wi-Fi. Activation replaces the Mac executable and
+restarts the existing LaunchAgent; retain the exact profile, pairing record and
+job definition. Do not configure or pair the device again. Verify listener
+availability before stopping the warm daemon, then verify the new PID, active
+session and a real full-screen screenshot. Dynamic XCTest remains unfinished.
 
-A future activation reuses the saved RemotePairing identity without manual
-pairing. Restart still closes the warm connection; pure-5G reacquisition is not
-guaranteed, so activate with the phone's RemotePairing listener available on Wi-Fi.
+Pre-activation doctor exposed a build metadata defect: scripts injected the
+candidate version while internal validation still expected 1.0.0. Build metadata
+now has one authority in the Go constants. The CLI consumes those constants and
+the build script reads the pinned upstream commit from the same source; linker
+flags supply only the computed patch digest. The version command validates this
+metadata, so the actual built executable is checked during every build/test.
+
+Restart closes the warm connection. The saved RemotePairing identity is reused;
+pure-5G reacquisition is not guaranteed, so initial activation requires the
+phone's Wi-Fi RemotePairing listener to be available.
 
 ## Verification
 
@@ -61,7 +68,7 @@ Cover exact binary PNG round trips, truncated/oversized responses, image bounds,
 refusal to overwrite files, busy-session refusal, and capture errors that leave
 the existing session and generation intact. Validate build/test without any
 installed executable replacement. These tests use fake sessions; physical
-screenshot and dynamic capture acceptance remain pending service activation.
+screenshot and dynamic capture acceptance require separate device evidence.
 
 The previous candidate probe returned control_request_invalid on the installed
 daemon and created no output. Its before/after status stayed active, generation 2,
@@ -80,3 +87,26 @@ verification. The live service retained PID 957, generation 2, session_loss_coun
 Lyo Swift iOS 0.14.2 was installed separately using that existing service, whose
 final status was active, install_count 44. No Deploy Link installation or restart
 was performed. Physical screenshot capture and dynamic XCTest remain unaccepted.
+
+## Authorized activation evidence
+
+On 2026-09-08 the user authorized replacement/restart with the phone on Wi-Fi.
+Revision 3 passed the full build, relevant dependency tests, module tests, race
+tests and go vet. The candidate doctor accepted its actual build metadata,
+profile, pairing record, Tailnet reachability and open RemotePairing listener.
+The local test log is .build/capture-activation-tests.log.
+
+scripts/install.sh atomically replaced the Mac executable; its signature and
+version were verified before kickstarting the existing LaunchAgent. PID changed
+from 957 to 74058. The daemon reused the saved identity, passed InstallationProxy
+readiness and reached active generation 1. Generation counters are per-process,
+so restarting resets them. Profile, pairing record and LaunchAgent SHA-256 values
+were unchanged against the private activation baseline.
+
+The first physical screenshot reached the Instruments developer service, but
+takeScreenshot received no reply within the pinned channel's five-second
+deadline. No PNG was produced. The daemon remained active at generation 1;
+capture failure did not reconnect or close the deployment session. An unlocked,
+screen-on retry is pending. Screenshot capture is not yet accepted, and remote
+XCTest remains unimplemented. This activation verifies service recovery and
+installation-service readiness, not a new app installation or UI interaction.

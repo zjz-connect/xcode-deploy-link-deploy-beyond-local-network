@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const ModuleVersion = "1.0.0"
+const ModuleVersion = "1.2.0-capture-preview.3"
 const PinnedLinkCoreCommit = "3ebc297691a9e364772aef027744ebc0c49421a5"
 
 type DoctorReport struct {
@@ -111,7 +111,8 @@ func itoa(value int) string {
 	return strconv.Itoa(value)
 }
 
-func validateBuildMetadata(metadata BuildMetadata) error {
+// ValidateBuildMetadata checks the actual executable before version/doctor success.
+func ValidateBuildMetadata(metadata BuildMetadata) error {
 	if metadata.Version != ModuleVersion || metadata.LinkCoreCommit != PinnedLinkCoreCommit {
 		return coded("build_metadata_invalid", "binary version or Link Core commit does not match the pinned module", nil)
 	}
@@ -137,7 +138,7 @@ func Doctor(ctx context.Context, profilePath string, metadata BuildMetadata) (Do
 	if !report.MacOS || !report.Arm64 {
 		return report, coded("platform_unsupported", "Nodus Remote Deploy requires macOS arm64", nil)
 	}
-	if err := validateBuildMetadata(metadata); err != nil {
+	if err := ValidateBuildMetadata(metadata); err != nil {
 		return report, err
 	}
 	report.BuildMetadataValid = true

@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-module_version="1.2.0-capture-preview.2"
 go_version="1.26.5"
 go_archive_sha256="efb87ff28af9a188d0536ef5d42e63dd52ba8263cd7344a993cc48dd11dedb6a"
-link_core_commit="3ebc297691a9e364772aef027744ebc0c49421a5"
 link_core_upstream_repository="https://github.com/danielpaulus/go-ios.git"
 
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 module_directory="$(cd "${script_directory}/.." && pwd -P)"
+link_core_commit="$(awk -F '\"' '/^const PinnedLinkCoreCommit = / { print $2 }' "${module_directory}/internal/linkcore/system.go")"
+[[ "${link_core_commit}" =~ ^[0-9a-f]{40}$ ]] || { printf 'Invalid pinned Link Core commit\n' >&2; exit 1; }
 patch_path="${module_directory}/patches/link-core-tailnet.patch"
 : "${HOME:?HOME must be set}"
 runtime_root="${NODUS_REMOTE_DEPLOY_RUNTIME_ROOT:-${HOME}/Library/Application Support/Nodus Remote Deploy}"
@@ -116,7 +116,7 @@ mkdir "${workspace_stage}"
 mv -f "${workspace_stage}/go.work" "${workspace_file}"
 
 staged_binary="${staging_root}/nodus-remote-deploy"
-ldflags="-s -w -X main.version=${module_version} -X main.linkCoreCommit=${link_core_commit} -X main.patchSHA=${patch_sha256}"
+ldflags="-s -w -X main.patchSHA=${patch_sha256}"
 (
   cd "${module_directory}"
   GOWORK="${workspace_file}" \

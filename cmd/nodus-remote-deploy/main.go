@@ -15,8 +15,9 @@ import (
 	"github.com/zjz-connect/xcode-deploy-link-deploy-beyond-local-network/internal/linkcore"
 )
 
-var version = "dev"
-var linkCoreCommit = "unknown"
+const version = linkcore.ModuleVersion
+const linkCoreCommit = linkcore.PinnedLinkCoreCommit
+
 var patchSHA = "unknown"
 
 func emit(value any) {
@@ -223,6 +224,11 @@ func run(arguments []string) error {
 	case "launch-agent":
 		return launchAgent(arguments[1:])
 	case "version":
+		if err := linkcore.ValidateBuildMetadata(linkcore.BuildMetadata{
+			Version: version, LinkCoreCommit: linkCoreCommit, PatchSHA256: patchSHA,
+		}); err != nil {
+			return err
+		}
 		emit(map[string]any{"version": version, "link_core_commit": linkCoreCommit, "patch_sha256": patchSHA})
 		return nil
 	default:

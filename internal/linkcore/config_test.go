@@ -119,17 +119,17 @@ func TestValidateBuildMetadata(t *testing.T) {
 		LinkCoreCommit: PinnedLinkCoreCommit,
 		PatchSHA256:    strings.Repeat("a", 64),
 	}
-	if err := validateBuildMetadata(valid); err != nil {
+	if err := ValidateBuildMetadata(valid); err != nil {
 		t.Fatal(err)
 	}
 	invalid := valid
 	invalid.Version = "dev"
-	if err := validateBuildMetadata(invalid); errorCode(err) != "build_metadata_invalid" {
+	if err := ValidateBuildMetadata(invalid); errorCode(err) != "build_metadata_invalid" {
 		t.Fatalf("error = %v, want build_metadata_invalid", err)
 	}
 	invalid = valid
 	invalid.PatchSHA256 = strings.Repeat("g", 64)
-	if err := validateBuildMetadata(invalid); errorCode(err) != "build_metadata_invalid" {
+	if err := ValidateBuildMetadata(invalid); errorCode(err) != "build_metadata_invalid" {
 		t.Fatalf("error = %v, want build_metadata_invalid", err)
 	}
 }

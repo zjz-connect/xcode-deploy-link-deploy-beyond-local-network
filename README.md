@@ -346,15 +346,16 @@ Nodus Remote Deploy 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
 [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios)，完整归属见
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
-## Isolated remote capture candidate
+## Remote capture preview
 
-Development revision 1.2.0-design.1 adds a daemon screenshot operation using the
-existing go-ios dependency and pairing identity. It is not installed into the
-live service. See [Remote Capture](docs/remote-capture.md) for the zero-repairing
-and live-process activation boundaries.
+Capture development adds a daemon screenshot operation using the existing
+go-ios dependency. Preview 3 was activated on 2026-09-08 using the existing
+pairing identity. The deployment session recovered; the first physical
+screenshot timed out. See [Remote Capture](docs/remote-capture.md) for the
+activation evidence and outstanding capture checks.
 
 The capture candidate uses raw PNG bodies after a bounded JSON result header.
 Build and tests are now separate from installation: `scripts/build.sh` writes
 only the local `.build/nodus-remote-deploy`; `scripts/test.sh` never installs it.
 The dynamic acquisition route is native XCTest, with WebDriverAgent excluded.
-See [Remote Capture](docs/remote-capture.md) revision 1.2.0-design.2.
+See [Remote Capture](docs/remote-capture.md) revision 1.2.0-design.3.
