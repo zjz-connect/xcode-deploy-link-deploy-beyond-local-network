@@ -350,8 +350,10 @@ Nodus Remote Deploy 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
 
 Capture uses the existing go-ios dependency and pairing identity. Preview 6
 is active with native test execution and original screenshot attachments.
-Physical tap, swipe and scroll checks have passed. Standalone Instruments
-screenshot has both a successful full-frame capture and a later timeout;
+Physical tap, swipe and scroll checks passed over cellular with six full-frame
+PNGs. Standalone Instruments screenshot has both successful captures and
+intermittent timeouts; the final three repeat samples passed, but the earlier
+timeout cause remains unexplained;
 see [Remote Capture](docs/remote-capture.md) for the separate operation and
 network evidence.
 

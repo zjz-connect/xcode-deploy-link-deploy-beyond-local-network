@@ -2,7 +2,7 @@
   "version": 1,
   "goal": "Verify Deploy Link cross-network screenshot, XCTest tap and swipe on the paired iPhone without WebDriverAgent",
   "created_at": "2026-09-09T18:36:56.668274+00:00",
-  "updated_at": "2026-09-09T19:31:35.639392+00:00",
+  "updated_at": "2026-09-09T19:39:22.661648+00:00",
   "tasks": [
     {
       "id": "T001",
@@ -115,13 +115,13 @@
         "Prove screenshot tap and swipe over a distinct network; report any external blocker"
       ],
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "main",
       "notes": [
         "Preview 4 activated with unchanged identity. Native remote testmanagerd run completed 2 passing test methods and 5 named full-frame PNGs. Collector rejected final result due nested parent suite nil dereference; design.5 fixes active lifecycle lookup separately from completed attachment lookup before repeating acceptance.",
         "Current full run passed 3 selected tests with 6 verified 1320x2868 PNGs at 19:26-19:29 UTC over Tailnet RSD, generation 1 unchanged. Phone peer endpoint is public; user physical-network confirmation is pending. Standalone Instruments capture still times out at 5 seconds, including immediately after passing native tests; a single longer-deadline diagnostic will distinguish delayed payload from absent response without changing pairing."
       ],
-      "completion_summary": null,
+      "completion_summary": "Native cellular capture flow passed all 3 selected tap/swipe/scroll tests and 6 complete 1320x2868 PNGs. User confirmed cellular; Tailnet direct public endpoint differs from Mac and generation stayed 1. Standalone screenshot passed a direct probe and four formal captures including three timed repeat samples, but its earlier intermittent 5-second timeout remains unexplained and is not claimed repaired. Build/dependency/module/race/vet checks passed; native implementation pushed to Contabo and GitHub as 03ac823.",
       "blocked_reason": null,
       "history": [
         {
@@ -150,6 +150,13 @@
           "action": "note",
           "payload": {
             "text": "Current full run passed 3 selected tests with 6 verified 1320x2868 PNGs at 19:26-19:29 UTC over Tailnet RSD, generation 1 unchanged. Phone peer endpoint is public; user physical-network confirmation is pending. Standalone Instruments capture still times out at 5 seconds, including immediately after passing native tests; a single longer-deadline diagnostic will distinguish delayed payload from absent response without changing pairing."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T19:39:22.660861+00:00",
+          "action": "done",
+          "payload": {
+            "summary": "Native cellular capture flow passed all 3 selected tap/swipe/scroll tests and 6 complete 1320x2868 PNGs. User confirmed cellular; Tailnet direct public endpoint differs from Mac and generation stayed 1. Standalone screenshot passed a direct probe and four formal captures including three timed repeat samples, but its earlier intermittent 5-second timeout remains unexplained and is not claimed repaired. Build/dependency/module/race/vet checks passed; native implementation pushed to Contabo and GitHub as 03ac823."
           }
         }
       ]

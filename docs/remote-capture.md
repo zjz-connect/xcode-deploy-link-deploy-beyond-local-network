@@ -2,7 +2,7 @@
 
 Document revision: 1.2.0-design.6
 Candidate version: 1.2.0-capture-preview.6
-Status: physical remote execution verification in progress
+Status: cellular native capture flow verified; standalone screenshot intermittent timeout remains unexplained
 
 ## Scope and transport
 
@@ -123,10 +123,22 @@ execution proves cross-network capture.
   Mac's public endpoints. The daemon remained active at generation 1 throughout.
   Sanitized network observations are in `network-observation.json` beside it.
 - Standalone screenshot also timed out immediately after that successful run.
-  A one-off inner-service probe will measure a complete response with an
-  explicit bounded deadline, distinguishing delayed PNG delivery from no
-  response. It must reuse the live forwarder and current RSD services, never
-  open a second pairing session or change the production timeout speculatively.
+  A one-off probe reused the live forwarder, verified a fresh RSD identity and
+  received a normal screenshot-channel Ack. The Instruments port was unchanged.
+  It returned 666,332 PNG bytes in 1.273 seconds, inside the original five-second
+  limit. The longer diagnostic deadline therefore does not establish a timeout
+  fix, and the production deadline was not changed.
+- The next formal screenshot passed. Three additional formal captures passed
+  in 3.317, 2.625 and 3.004 seconds, including a 30-second idle interval before
+  the last sample. All were full 1320 × 2868 PNGs, on cellular at generation 1.
+  Evidence: `screenshot-probe-result.json`, `after-probe-command.log` and
+  `screenshot-repeat.json` under `.build/remote-acceptance`.
+- The standalone timeout remains unexplained. The controlled samples establish
+  current successful capture, not a guarantee against recurrence. SDK flows
+  use the independently verified native XCTest attachments after actual state
+  assertions. Do not mark standalone Instruments reliability as fully repaired.
 
-Local evidence is under `.build/remote-acceptance`. Only a completed remote run,
-its verified images and a distinct-network repeat fulfill acceptance.
+Local evidence is under `.build/remote-acceptance`. The completed cellular run,
+verified images and user-confirmed network fulfill native capture-flow acceptance.
+General free-form phone control and unattended cold acquisition on cellular are
+outside this verification.
