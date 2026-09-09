@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "goal": "Verify Deploy Link cross-network screenshot, XCTest tap and swipe on the paired iPhone without WebDriverAgent",
+  "created_at": "2026-09-09T18:36:56.668274+00:00",
+  "updated_at": "2026-09-09T19:31:35.639392+00:00",
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Remote XCTest dependency audit",
+      "description": "Inspect pinned and upstream testmanagerd routes, RSD version detection, launch and attachment support. Read only findings with exact minimal integration requirements.",
+      "files": [
+        "internal/linkcore",
+        "patches/link-core-tailnet.patch"
+      ],
+      "acceptance": [
+        "List every local-usbmuxd dependency and the native remote replacement",
+        "Identify how to run selected signed Lyo Swift XCTest methods and collect attachments"
+      ],
+      "depends_on": [],
+      "status": "done",
+      "owner": "subagent:xctest_audit",
+      "notes": [],
+      "completion_summary": "Audited and adapted the existing native remote XCTest path: authenticated RSD OS version, cancellable inner services, complete UUID reads, runner cleanup and detached attachment/results. Real device exposed and regression-tested nested suite completion.",
+      "blocked_reason": null,
+      "history": [
+        {
+          "timestamp": "2026-09-09T18:36:56.809887+00:00",
+          "action": "created",
+          "payload": {
+            "description": "Inspect pinned and upstream testmanagerd routes, RSD version detection, launch and attachment support. Read only findings with exact minimal integration requirements."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:36:57.236882+00:00",
+          "action": "claimed",
+          "payload": {
+            "owner": "subagent:xctest_audit"
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:57:19.527537+00:00",
+          "action": "done",
+          "payload": {
+            "summary": "Audited and adapted the existing native remote XCTest path: authenticated RSD OS version, cancellable inner services, complete UUID reads, runner cleanup and detached attachment/results. Real device exposed and regression-tested nested suite completion."
+          }
+        }
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Screenshot and local baseline",
+      "description": "Reproduce Instruments timeout, inspect transport and establish a real XCTest screenshot, tap and swipe baseline.",
+      "files": [
+        "docs/remote-capture.md",
+        "internal/linkcore/screenshot.go",
+        "patches/link-core-tailnet.patch"
+      ],
+      "acceptance": [
+        "Identify screenshot failure boundary using device logs",
+        "Save and inspect physical full-frame screenshots"
+      ],
+      "depends_on": [],
+      "status": "done",
+      "owner": "main",
+      "notes": [
+        "Physical screenshot succeeded through live Deploy Link generation 8 at 1320x2868. Xcode baseline passed tap and swipe, 2 tests and 5 full-frame PNGs. Previous no-response cause remains unproven; no timeout workaround added."
+      ],
+      "completion_summary": "Deploy Link returned a complete 1320x2868 physical screenshot. Xcode baseline completed tap/swipe with 0 failures and 5 inspected PNGs. Prior Instruments timeout is distinguished from test startup; no speculative timeout workaround added.",
+      "blocked_reason": null,
+      "history": [
+        {
+          "timestamp": "2026-09-09T18:36:56.965479+00:00",
+          "action": "created",
+          "payload": {
+            "description": "Reproduce Instruments timeout, inspect transport and establish a real XCTest screenshot, tap and swipe baseline."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:36:57.388816+00:00",
+          "action": "claimed",
+          "payload": {
+            "owner": "main"
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:46:07.621603+00:00",
+          "action": "note",
+          "payload": {
+            "text": "Physical screenshot succeeded through live Deploy Link generation 8 at 1320x2868. Xcode baseline passed tap and swipe, 2 tests and 5 full-frame PNGs. Previous no-response cause remains unproven; no timeout workaround added."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:57:20.465969+00:00",
+          "action": "done",
+          "payload": {
+            "summary": "Deploy Link returned a complete 1320x2868 physical screenshot. Xcode baseline completed tap/swipe with 0 failures and 5 inspected PNGs. Prior Instruments timeout is distinguished from test startup; no speculative timeout workaround added."
+          }
+        }
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Remote test execution and acceptance",
+      "description": "Implement the direct testmanagerd route on the daemon-owned tunnel, verify selected native tap and swipe tests with screenshots, then test a distinct network.",
+      "files": [
+        "internal/linkcore",
+        "cmd/nodus-remote-deploy",
+        "scripts",
+        "docs",
+        "patches/link-core-tailnet.patch"
+      ],
+      "acceptance": [
+        "Pass module and dependency checks",
+        "Return test results and named PNG attachments through Deploy Link",
+        "Prove screenshot tap and swipe over a distinct network; report any external blocker"
+      ],
+      "depends_on": [],
+      "status": "in_progress",
+      "owner": "main",
+      "notes": [
+        "Preview 4 activated with unchanged identity. Native remote testmanagerd run completed 2 passing test methods and 5 named full-frame PNGs. Collector rejected final result due nested parent suite nil dereference; design.5 fixes active lifecycle lookup separately from completed attachment lookup before repeating acceptance.",
+        "Current full run passed 3 selected tests with 6 verified 1320x2868 PNGs at 19:26-19:29 UTC over Tailnet RSD, generation 1 unchanged. Phone peer endpoint is public; user physical-network confirmation is pending. Standalone Instruments capture still times out at 5 seconds, including immediately after passing native tests; a single longer-deadline diagnostic will distinguish delayed payload from absent response without changing pairing."
+      ],
+      "completion_summary": null,
+      "blocked_reason": null,
+      "history": [
+        {
+          "timestamp": "2026-09-09T18:36:57.093397+00:00",
+          "action": "created",
+          "payload": {
+            "description": "Implement the direct testmanagerd route on the daemon-owned tunnel, verify selected native tap and swipe tests with screenshots, then test a distinct network."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:46:07.830184+00:00",
+          "action": "claimed",
+          "payload": {
+            "owner": "main"
+          }
+        },
+        {
+          "timestamp": "2026-09-09T18:55:37.604872+00:00",
+          "action": "note",
+          "payload": {
+            "text": "Preview 4 activated with unchanged identity. Native remote testmanagerd run completed 2 passing test methods and 5 named full-frame PNGs. Collector rejected final result due nested parent suite nil dereference; design.5 fixes active lifecycle lookup separately from completed attachment lookup before repeating acceptance."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T19:31:35.639052+00:00",
+          "action": "note",
+          "payload": {
+            "text": "Current full run passed 3 selected tests with 6 verified 1320x2868 PNGs at 19:26-19:29 UTC over Tailnet RSD, generation 1 unchanged. Phone peer endpoint is public; user physical-network confirmation is pending. Standalone Instruments capture still times out at 5 seconds, including immediately after passing native tests; a single longer-deadline diagnostic will distinguish delayed payload from absent response without changing pairing."
+          }
+        }
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "Verify capture product and signing repair",
+      "description": "Verify Lyo Swift 0.16.1 after removing redundant layout identifier and sealing rebuilt test runners; preserve unrelated icon edits in both Git and working tree.",
+      "files": [
+        "/Users/zjz/Opensquare/Lyo Swift/App/Views/Gallery/LayoutOrganization/LayoutOrganizationRenderer.swift",
+        "/Users/zjz/Opensquare/Lyo Swift/Scripts/prepare_sdk_handbook.py",
+        "/Users/zjz/Opensquare/Lyo Swift/docs",
+        "/Users/zjz/Opensquare/Lyo Swift/VERSION",
+        "/Users/zjz/Opensquare/Lyo Swift/LyoSwift.xcodeproj/project.pbxproj"
+      ],
+      "acceptance": [
+        "Signed app and runner build and install successfully",
+        "Existing physical scroll test locates native ScrollView and verifies movement",
+        "Commit and push only task changes, preserving icon edits"
+      ],
+      "depends_on": [],
+      "status": "done",
+      "owner": "main",
+      "notes": [],
+      "completion_summary": "Lyo Swift iOS 0.16.1 (20) and sealed runner built, strictly verified and installed. Real tap, swipe and scroll pass with six original PNGs. Capture script regressions passed. Task changes and architecture docs committed as 9335626 and 1768e78 and pushed to Contabo and GitHub; user icon edits remain unstaged.",
+      "blocked_reason": null,
+      "history": [
+        {
+          "timestamp": "2026-09-09T19:12:46.670288+00:00",
+          "action": "created",
+          "payload": {
+            "description": "Verify Lyo Swift 0.16.1 after removing redundant layout identifier and sealing rebuilt test runners; preserve unrelated icon edits in both Git and working tree."
+          }
+        },
+        {
+          "timestamp": "2026-09-09T19:12:46.894986+00:00",
+          "action": "claimed",
+          "payload": {
+            "owner": "main"
+          }
+        },
+        {
+          "timestamp": "2026-09-09T19:31:35.431213+00:00",
+          "action": "done",
+          "payload": {
+            "summary": "Lyo Swift iOS 0.16.1 (20) and sealed runner built, strictly verified and installed. Real tap, swipe and scroll pass with six original PNGs. Capture script regressions passed. Task changes and architecture docs committed as 9335626 and 1768e78 and pushed to Contabo and GitHub; user icon edits remain unstaged."
+          }
+        }
+      ]
+    }
+  ]
+}

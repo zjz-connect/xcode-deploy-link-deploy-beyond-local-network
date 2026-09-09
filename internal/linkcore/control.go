@@ -13,28 +13,32 @@ import (
 )
 
 type Request struct {
-	Command          string `json:"command"`
-	AppPath          string `json:"app_path,omitempty"`
-	BundleIdentifier string `json:"bundle_identifier,omitempty"`
+	TestRun          *TestRunRequest `json:"test_run,omitempty"`
+	Command          string          `json:"command"`
+	AppPath          string          `json:"app_path,omitempty"`
+	BundleIdentifier string          `json:"bundle_identifier,omitempty"`
 }
 
 type Response struct {
-	ScreenshotPNG  []byte `json:"-"`
-	ImageBytes     int    `json:"image_bytes,omitempty"`
-	OK             bool   `json:"ok"`
-	Final          bool   `json:"final"`
-	Event          string `json:"event,omitempty"`
-	State          string `json:"state,omitempty"`
-	Generation     uint64 `json:"generation,omitempty"`
-	SessionLosses  uint64 `json:"session_loss_count,omitempty"`
-	InstallCount   uint64 `json:"install_count,omitempty"`
-	UninstallCount uint64 `json:"uninstall_count,omitempty"`
-	Percent        int    `json:"percent,omitempty"`
-	Status         string `json:"status,omitempty"`
-	ErrorCode      string `json:"error_code,omitempty"`
-	Error          string `json:"error,omitempty"`
-	LastErrorCode  string `json:"last_error_code,omitempty"`
-	ObservedAt     string `json:"observed_at,omitempty"`
+	ResultPath      string `json:"result_path,omitempty"`
+	TestCount       int    `json:"test_count,omitempty"`
+	ScreenshotCount int    `json:"screenshot_count,omitempty"`
+	ScreenshotPNG   []byte `json:"-"`
+	ImageBytes      int    `json:"image_bytes,omitempty"`
+	OK              bool   `json:"ok"`
+	Final           bool   `json:"final"`
+	Event           string `json:"event,omitempty"`
+	State           string `json:"state,omitempty"`
+	Generation      uint64 `json:"generation,omitempty"`
+	SessionLosses   uint64 `json:"session_loss_count,omitempty"`
+	InstallCount    uint64 `json:"install_count,omitempty"`
+	UninstallCount  uint64 `json:"uninstall_count,omitempty"`
+	Percent         int    `json:"percent,omitempty"`
+	Status          string `json:"status,omitempty"`
+	ErrorCode       string `json:"error_code,omitempty"`
+	Error           string `json:"error,omitempty"`
+	LastErrorCode   string `json:"last_error_code,omitempty"`
+	ObservedAt      string `json:"observed_at,omitempty"`
 }
 
 type Snapshot struct {
@@ -187,6 +191,15 @@ func writeOneResponse(writer io.Writer, response Response) error {
 }
 
 func validateCommand(request Request) error {
+	if request.Command == "run-tests" {
+		if request.AppPath != "" || request.BundleIdentifier != "" {
+			return coded("control_request_invalid", "run-tests accepts only test_run", nil)
+		}
+		return validateTestRun(request.TestRun)
+	}
+	if request.TestRun != nil {
+		return coded("control_request_invalid", "test_run is only valid for run-tests", nil)
+	}
 	switch request.Command {
 	case "status", "stop", "screenshot":
 		if request.AppPath != "" || request.BundleIdentifier != "" {

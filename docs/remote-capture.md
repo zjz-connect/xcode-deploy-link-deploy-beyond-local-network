@@ -1,112 +1,132 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.3
-Candidate version: 1.2.0-capture-preview.3
-Status: activated on 2026-09-08; deployment session recovered; physical screenshot timed out
+Document revision: 1.2.0-design.6
+Candidate version: 1.2.0-capture-preview.6
+Status: physical remote execution verification in progress
 
-## Direct acquisition route
+## Scope and transport
 
-Deploy Link already embeds pinned Link Core (go-ios). Use its Instruments
-screenshot service on the daemon-owned, verified DeviceEntry and userspace tunnel.
-Static capture returns the complete original PNG. Dynamic handbook acquisition
-will use the signed Lyo Swift XCTest runner over testmanagerd, with named PNG
-attachments and structured test results. WebDriverAgent is excluded from this
-route; no WDA installation, server, HTTP bridge or general Agent control is planned.
-Remote XCTest still needs an RSD OS-version path instead of local usbmuxd and
-an attachment/result adapter before existing capture promotion can consume it.
+Deploy Link uses the pinned Link Core dependency on its existing authenticated
+Tailnet userspace tunnel. Screenshot, testmanagerd, CoreDevice appservice and
+openstdio receive the same verified DeviceEntry as installation. Device OS
+version comes from the authenticated RSD handshake. Remote test execution does
+not consult Xcode destinations or local usbmuxd. WebDriverAgent is not used.
 
-## Screenshot protocol and ownership
+Xcode builds and signs the app and its native XCTest runner. Deploy Link installs
+both bundles, then executes explicitly selected UI test methods. Tap and swipe
+are real XCTest events in that signed runner. This is a capture workflow, not a
+persistent general-purpose phone control server.
 
-The owner-only Unix socket carries one JSON final-result header terminated by
-one newline, followed by exactly image_bytes raw PNG bytes on success. PNG is
-not Base64-encoded or duplicated in JSON. The client uses the decoder's buffered
-bytes and the remaining socket stream; rejects unexpected, oversized or truncated
-bodies; validates the full PNG once; and creates one owner-only output without
-overwriting existing files. Payloads are capped at 64 MiB and decoded images at
-16 megapixels, with each dimension at most 16,384. No cropping or re-encoding.
+## Screenshot
 
-The daemon takes the screenshot and captures its generation metadata under the
-same operation lock. It refuses capture while another device operation owns the
-session. A capture error neither closes nor reacquires the outer pairing tunnel,
-nor changes installation readiness. Cancellation closes only the inner screenshot
-service, once. A bounded socket write prevents a stalled client from keeping a
-completed screenshot response open indefinitely. Service construction still uses
-the pinned library's own bounded connection/channel operations; it is not a
-context-aware constructor, and must be revalidated on the physical device.
+`screenshot --profile PROFILE --output NEW_FILE.png` returns the entire device
+PNG without cropping, scaling or re-encoding. One newline-terminated JSON header
+precedes exactly `image_bytes` binary bytes on the owner-only Unix socket. The
+client preserves decoder read-ahead, checks payload size and PNG decoding, and
+creates a new owner-only file. Payloads are capped at 64 MiB and 16 megapixels.
 
-## Build, test and activation
+A screenshot failure closes only its inner service. It does not close or
+reacquire the outer pairing session, or change installation readiness. A busy
+device operation is rejected explicitly. The existing Instruments channel has
+a five-second RPC deadline; an earlier timeout was not treated as proof that
+increasing this deadline would fix device readiness.
 
-scripts/build.sh prepares the pinned dependency/cache and produces only the
-worktree's .build/nodus-remote-deploy and .build/go.work. Its generated build
-environment is also local to this worktree, so two checkouts cannot silently
-reuse each other's Go workspace. It never replaces the installed executable.
-scripts/test.sh invokes build and the relevant dependency/module/race/vet checks.
-Only scripts/install.sh copies the candidate into the installed binary directory.
-It never starts or restarts the LaunchAgent; activation remains a separate action.
+## Native test command
 
-The user confirmed the App UI and explicitly authorized replacement/restart on
-2026-09-08 with the iPhone on Wi-Fi. Activation replaces the Mac executable and
-restarts the existing LaunchAgent; retain the exact profile, pairing record and
-job definition. Do not configure or pair the device again. Verify listener
-availability before stopping the warm daemon, then verify the new PID, active
-session and a real full-screen screenshot. Dynamic XCTest remains unfinished.
+```sh
+nodus-remote-deploy run-tests \
+  --profile /absolute/path/to/iphone.json \
+  --app-id lyo.swift \
+  --runner-id lyo.swift.uitests.xctrunner \
+  --test-bundle LyoSwiftUITests.xctest \
+  --test InteractionMotionCaptureTests/testCaptureTapPress \
+  --test InteractionMotionCaptureTests/testCaptureSwipe \
+  --require-attachment interaction-motion-interaction-tap-press-interaction-tap-press-activated \
+  --require-attachment interaction-motion-interaction-swipe-interaction-swipe-revealed \
+  --output /absolute/path/to/new-capture \
+  --timeout 8m
+```
 
-Pre-activation doctor exposed a build metadata defect: scripts injected the
-candidate version while internal validation still expected 1.0.0. Build metadata
-now has one authority in the Go constants. The CLI consumes those constants and
-the build script reads the pinned upstream commit from the same source; linker
-flags supply only the computed patch digest. The version command validates this
-metadata, so the actual built executable is checked during every build/test.
+Repeat `--test` for each selected `Class/testMethod`, and
+`--require-attachment` for each required named PNG. The signed app and runner
+must already be installed. The timeout is bounded to 30 seconds through 30
+minutes. The daemon creates a new private directory containing `result.json`,
+`runner.log` and an `attachments` directory. PNG bytes are preserved and receive
+`.png` extensions; names, test identities and paths are retained in the report.
 
-Restart closes the warm connection. The saved RemotePairing identity is reused;
-pure-5G reacquisition is not guaranteed, so initial activation requires the
-phone's Wi-Fi RemotePairing listener to be available.
+Success requires every selected method to finish exactly once with passed
+status. Every required screenshot must exist and fully decode. A missing test,
+failed method, cancelled run, collector error or missing required PNG fails the
+command. Full error details remain in `result.json`; the CLI includes its path.
+Launch success alone is never acceptance evidence.
 
-## Verification
+## Ownership and completion
 
-Cover exact binary PNG round trips, truncated/oversized responses, image bounds,
-refusal to overwrite files, busy-session refusal, and capture errors that leave
-the existing session and generation intact. Validate build/test without any
-installed executable replacement. These tests use fake sessions; physical
-screenshot and dynamic capture acceptance require separate device evidence.
+Device operations are serialized by the daemon. Client disconnect, timeout and
+service shutdown cancel the test's inner sockets without altering pairing.
+Startup waits observe cancellation, rejected runner authorization is an error,
+and the openstdio UUID is read completely across fragmented network reads.
+Runner startup failure closes stdio; run completion joins stdout and performs
+bounded runner cleanup. Listener callbacks and logs are synchronized, and final
+results are detached from later callbacks before serialization.
 
-The previous candidate probe returned control_request_invalid on the installed
-daemon and created no output. Its before/after status stayed active, generation 2,
-session_loss_count 1. Do not repeat an unsupported screenshot probe for this revision.
+Active suite lifecycle lookup remains separate from completed-test attachment
+lookup. This preserves late screenshots without treating an already finished
+parent suite as active. A regression reproduces the actual parent/leaf finish
+order that previously caused result collection to fail after passing tests.
+Optional attachment metadata uses the NSKeyedArchiver null representation on
+iOS 27 failure diagnostics. Decode absent/null `userInfo` as absent metadata;
+retain strict parsing of actual dictionaries and required screenshot payloads.
 
-## Candidate revision 2 evidence — 2026-09-08
+## Build and activation
 
-scripts/test.sh completed successfully: candidate build/sign, relevant pinned
-Link Core package tests, module tests, race checks and go vet all passed.
-The binary round trip uses a PNG larger than the decoder read-ahead buffer;
-the saved bytes match the source exactly. Frame and decoded-size rejection
-checks passed. The local log is .build/capture-optimized-tests.log.
+`scripts/build.sh` builds only the checkout's `.build/nodus-remote-deploy` and
+its local Go workspace. `scripts/test.sh` checks the relevant pinned dependency
+packages, module tests, race checks and vet; it never installs or restarts a
+service. `scripts/install.sh` atomically replaces the installed executable.
+Activation restarts the existing LaunchAgent separately, using the unchanged
+profile and pairing record. Version and pinned commit have one Go authority;
+the build injects the actual downstream patch digest.
 
-The installed binary fingerprint stayed unchanged through candidate build and
-verification. The live service retained PID 957, generation 2, session_loss_count 1.
-Lyo Swift iOS 0.14.2 was installed separately using that existing service, whose
-final status was active, install_count 44. No Deploy Link installation or restart
-was performed. Physical screenshot capture and dynamic XCTest remain unaccepted.
+The user authorized activation and physical network testing on 2026-09-09.
+Verify that Wi-Fi exposes the RemotePairing listener before stopping the warm
+service. Initial acquisition requires that listener; pure-cellular cold
+acquisition remains unsupported. Neither a passing build nor local Xcode test
+execution proves cross-network capture.
 
-## Authorized activation evidence
+## Physical evidence
 
-On 2026-09-08 the user authorized replacement/restart with the phone on Wi-Fi.
-Revision 3 passed the full build, relevant dependency tests, module tests, race
-tests and go vet. The candidate doctor accepted its actual build metadata,
-profile, pairing record, Tailnet reachability and open RemotePairing listener.
-The local test log is .build/capture-activation-tests.log.
+- Before modification, the live Deploy Link returned a full 1320 × 2868 PNG.
+- Local Xcode baseline: tap and swipe passed, with five full-frame screenshots.
+- Preview 4 remote execution: both test methods passed and five PNGs arrived,
+  but the result correctly failed because nested suite completion triggered a
+  collector error. Preview 5 removes that faulty lifecycle lookup.
+- Preview 6 passed the build, affected dependency packages (including the
+  attachment archive decoder), module/race checks and vet. It is installed and
+  active using the same profile, pairing record and LaunchAgent.
+- Lyo Swift iOS 0.16.1 (20) and its sealed native test runner were installed
+  through Deploy Link. Tap and swipe passed with five original PNGs. After
+  repairing the ScrollView identifier and waiting for animated jumps, the
+  focused vertical scroll test passed with its original 1320 × 2868 PNG.
+- A screenshot command issued during an active test returned `session_busy`
+  without interrupting the test or replacing its output. Failed tests and
+  capture requests left the deployment session active.
+- After a period of inactivity, standalone Instruments screenshot again timed
+  out after five seconds despite an established inner connection. Its cause
+  remains under investigation. Native XCTest screenshot attachments use a
+  separate developer service and are verified independently.
+- The full three-method repeat passed at 19:26–19:29 UTC on 2026-09-09:
+  three selected methods, zero failures and six complete 1320 × 2868 PNGs.
+  Its report is `.build/remote-acceptance/cross-network/result.json`. The user
+  confirmed the iPhone was on cellular. Tailnet ping independently confirmed a
+  direct public route (332 ms), and the peer's public address differs from the
+  Mac's public endpoints. The daemon remained active at generation 1 throughout.
+  Sanitized network observations are in `network-observation.json` beside it.
+- Standalone screenshot also timed out immediately after that successful run.
+  A one-off inner-service probe will measure a complete response with an
+  explicit bounded deadline, distinguishing delayed PNG delivery from no
+  response. It must reuse the live forwarder and current RSD services, never
+  open a second pairing session or change the production timeout speculatively.
 
-scripts/install.sh atomically replaced the Mac executable; its signature and
-version were verified before kickstarting the existing LaunchAgent. PID changed
-from 957 to 74058. The daemon reused the saved identity, passed InstallationProxy
-readiness and reached active generation 1. Generation counters are per-process,
-so restarting resets them. Profile, pairing record and LaunchAgent SHA-256 values
-were unchanged against the private activation baseline.
-
-The first physical screenshot reached the Instruments developer service, but
-takeScreenshot received no reply within the pinned channel's five-second
-deadline. No PNG was produced. The daemon remained active at generation 1;
-capture failure did not reconnect or close the deployment session. An unlocked,
-screen-on retry is pending. Screenshot capture is not yet accepted, and remote
-XCTest remains unimplemented. This activation verifies service recovery and
-installation-service readiness, not a new app installation or UI interaction.
+Local evidence is under `.build/remote-acceptance`. Only a completed remote run,
+its verified images and a distinct-network repeat fulfill acceptance.

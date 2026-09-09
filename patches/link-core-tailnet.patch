@@ -1,27 +1,673 @@
+diff --git a/ios/appservice/appservice.go b/ios/appservice/appservice.go
+index 6147dbb..db6abf9 100644
+--- a/ios/appservice/appservice.go
++++ b/ios/appservice/appservice.go
+@@ -5,0 +6 @@ import (
++	"context"
+@@ -26,0 +28 @@ type Connection struct {
++	ctx      context.Context
+@@ -39 +41,5 @@ func New(deviceEntry ios.DeviceEntry) (*Connection, error) {
+-	xpcConn, err := ios.ConnectToXpcServiceTunnelIface(deviceEntry, "com.apple.coredevice.appservice")
++	return NewWithContext(context.Background(), deviceEntry)
++}
++
++func NewWithContext(ctx context.Context, deviceEntry ios.DeviceEntry) (*Connection, error) {
++	xpcConn, err := ios.ConnectToXpcServiceTunnelIfaceContext(ctx, deviceEntry, "com.apple.coredevice.appservice")
+@@ -44 +50 @@ func New(deviceEntry ios.DeviceEntry) (*Connection, error) {
+-	return &Connection{conn: xpcConn, deviceId: uuid.New().String(), device: deviceEntry}, nil
++	return &Connection{conn: xpcConn, deviceId: uuid.New().String(), device: deviceEntry, ctx: ctx}, nil
+@@ -88 +94 @@ func (c *Connection) LaunchAppWithStdIo(bundleId string, args []interface{}, env
+-	stdio, err := openstdio.NewOpenStdIoSocket(c.device)
++	stdio, err := openstdio.NewOpenStdIoSocketContext(c.ctx, c.device)
+@@ -101,0 +108 @@ func (c *Connection) LaunchAppWithStdIo(bundleId string, args []interface{}, env
++		stdio.Close()
+diff --git a/ios/appservice/context_test.go b/ios/appservice/context_test.go
+new file mode 100644
+index 0000000..1aa96d4
+--- /dev/null
++++ b/ios/appservice/context_test.go
+@@ -0,0 +1,54 @@
++package appservice
++
++import (
++	"context"
++	"io"
++	"net"
++	"testing"
++	"time"
++
++	"github.com/danielpaulus/go-ios/ios"
++)
++
++func TestCancellationInterruptsAppServiceHandshake(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
++	closed := make(chan struct{})
++	go func() {
++		conn, err := listener.Accept()
++		if err != nil {
++			close(closed)
++			return
++		}
++		defer conn.Close()
++		io.Copy(io.Discard, conn)
++		close(closed)
++	}()
++	device := ios.DeviceEntry{Address: "127.0.0.1", Rsd: ios.RsdHandshakeResponse{Services: map[string]ios.RsdServiceEntry{"com.apple.coredevice.appservice": {Port: uint32(listener.Addr().(*net.TCPAddr).Port)}}}}
++	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
++	defer cancel()
++	returned := make(chan error, 1)
++	go func() {
++		service, err := NewWithContext(ctx, device)
++		if service != nil {
++			service.Close()
++		}
++		returned <- err
++	}()
++	select {
++	case err := <-returned:
++		if err == nil {
++			t.Fatal("stalled handshake succeeded")
++		}
++	case <-time.After(time.Second):
++		t.Fatal("cancelled constructor stayed blocked")
++	}
++	select {
++	case <-closed:
++	case <-time.After(time.Second):
++		t.Fatal("constructor leaked its socket")
++	}
++}
+diff --git a/ios/connect.go b/ios/connect.go
+index 27fb033..55a6b0a 100755
+--- a/ios/connect.go
++++ b/ios/connect.go
+@@ -3,0 +4 @@ import (
++	"context"
+@@ -127,0 +129,4 @@ func ConnectToShimService(device DeviceEntry, service string) (DeviceConnectionI
++	return ConnectToShimServiceContext(context.Background(), device, service)
++}
++
++func ConnectToShimServiceContext(ctx context.Context, device DeviceEntry, service string) (DeviceConnectionInterface, error) {
+@@ -135 +140 @@ func ConnectToShimService(device DeviceEntry, service string) (DeviceConnectionI
+-	conn, err := ConnectTUNDevice(device.Address, port, device)
++	conn, err := ConnectTUNDeviceContext(ctx, device.Address, port, device)
+@@ -140,0 +146 @@ func ConnectToShimService(device DeviceEntry, service string) (DeviceConnectionI
++		conn.Close()
+@@ -148,0 +155,4 @@ func ConnectToXpcServiceTunnelIface(device DeviceEntry, serviceName string) (*xp
++	return ConnectToXpcServiceTunnelIfaceContext(context.Background(), device, serviceName)
++}
++
++func ConnectToXpcServiceTunnelIfaceContext(ctx context.Context, device DeviceEntry, serviceName string) (*xpc.Connection, error) {
+@@ -157 +167 @@ func ConnectToXpcServiceTunnelIface(device DeviceEntry, serviceName string) (*xp
+-	conn, err := ConnectTUNDevice(device.Address, port, device)
++	conn, err := ConnectTUNDeviceContext(ctx, device.Address, port, device)
+@@ -163,0 +174 @@ func ConnectToXpcServiceTunnelIface(device DeviceEntry, serviceName string) (*xp
++		conn.Close()
+@@ -166 +177,6 @@ func ConnectToXpcServiceTunnelIface(device DeviceEntry, serviceName string) (*xp
+-	return CreateXpcConnection(h)
++	xpcConn, err := CreateXpcConnection(h)
++	if err != nil {
++		h.Close()
++		return nil, err
++	}
++	return xpcConn, nil
+@@ -169,0 +186,4 @@ func ConnectToServiceTunnelIface(device DeviceEntry, serviceName string) (Device
++	return ConnectToServiceTunnelIfaceContext(context.Background(), device, serviceName)
++}
++
++func ConnectToServiceTunnelIfaceContext(ctx context.Context, device DeviceEntry, serviceName string) (DeviceConnectionInterface, error) {
+@@ -178 +198 @@ func ConnectToServiceTunnelIface(device DeviceEntry, serviceName string) (Device
+-	conn, err := ConnectTUNDevice(device.Address, port, device)
++	conn, err := ConnectTUNDeviceContext(ctx, device.Address, port, device)
+diff --git a/ios/connect_context.go b/ios/connect_context.go
+new file mode 100644
+index 0000000..a623606
+--- /dev/null
++++ b/ios/connect_context.go
+@@ -0,0 +1,57 @@
++package ios
++
++import (
++	"context"
++	"encoding/binary"
++	"fmt"
++	"net"
++	"strconv"
++	"sync"
++)
++
++// ConnectTUNDeviceContext owns one service socket, never the parent tunnel.
++// Its context covers dialing, service handshakes and subsequent RPC reads.
++func ConnectTUNDeviceContext(ctx context.Context, remoteIP string, port int, device DeviceEntry) (net.Conn, error) {
++	if port <= 0 || port > 65535 {
++		return nil, fmt.Errorf("invalid RSD service port %d", port)
++	}
++	address := net.JoinHostPort(remoteIP, strconv.Itoa(port))
++	if device.UserspaceTUN {
++		address = net.JoinHostPort(device.UserspaceTUNHost, strconv.Itoa(device.UserspaceTUNPort))
++	}
++	dialer := net.Dialer{Timeout: TunnelDialTimeout}
++	raw, err := dialer.DialContext(ctx, "tcp", address)
++	if err != nil {
++		return nil, err
++	}
++	conn := &contextServiceConn{Conn: raw}
++	conn.stop = context.AfterFunc(ctx, func() { conn.once.Do(func() { raw.Close() }) })
++	if device.UserspaceTUN {
++		ip := net.ParseIP(remoteIP).To16()
++		if ip == nil {
++			conn.Close()
++			return nil, fmt.Errorf("invalid tunnel IPv6 address")
++		}
++		request := make([]byte, 20)
++		copy(request, ip)
++		binary.LittleEndian.PutUint32(request[16:], uint32(port))
++		if _, err := conn.Write(request); err != nil {
++			conn.Close()
++			return nil, err
++		}
++	}
++	return conn, nil
++}
++
++type contextServiceConn struct {
++	net.Conn
++	stop func() bool
++	once sync.Once
++}
++
++func (c *contextServiceConn) Close() error {
++	c.stop()
++	var err error
++	c.once.Do(func() { err = c.Conn.Close() })
++	return err
++}
+diff --git a/ios/dtx_codec/channel_context_test.go b/ios/dtx_codec/channel_context_test.go
+new file mode 100644
+index 0000000..4e7d9f2
+--- /dev/null
++++ b/ios/dtx_codec/channel_context_test.go
+@@ -0,0 +1,24 @@
++package dtx
++
++import (
++	"context"
++	"errors"
++	"testing"
++)
++
++func TestDriverChannelWaitHonorsCancellation(t *testing.T) {
++	connection := &Connection{requestChannelMessages: make(chan Message), closed: make(chan struct{})}
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
++	if _, err := connection.ForChannelRequestContext(ctx, nil); !errors.Is(err, context.Canceled) {
++		t.Fatalf("cancellation lost: %v", err)
++	}
++}
++
++func TestDriverChannelWaitHonorsConnectionClose(t *testing.T) {
++	connection := &Connection{requestChannelMessages: make(chan Message), closed: make(chan struct{})}
++	connection.close(ErrConnectionClosed)
++	if _, err := connection.ForChannelRequestContext(context.Background(), nil); !errors.Is(err, ErrConnectionClosed) {
++		t.Fatalf("connection close lost: %v", err)
++	}
++}
+diff --git a/ios/dtx_codec/connection.go b/ios/dtx_codec/connection.go
+index 5057d4e..f03c5d1 100644
+--- a/ios/dtx_codec/connection.go
++++ b/ios/dtx_codec/connection.go
+@@ -186 +186,5 @@ func NewTunnelConnection(device ios.DeviceEntry, serviceName string) (*Connectio
+-	conn, err := ios.ConnectToServiceTunnelIface(device, serviceName)
++	return NewTunnelConnectionContext(context.Background(), device, serviceName)
++}
++
++func NewTunnelConnectionContext(ctx context.Context, device ios.DeviceEntry, serviceName string) (*Connection, error) {
++	conn, err := ios.ConnectToServiceTunnelIfaceContext(ctx, device, serviceName)
+@@ -257 +261,13 @@ func (dtxConn *Connection) ForChannelRequest(messageDispatcher Dispatcher) *Chan
+-	msg := <-dtxConn.requestChannelMessages
++	channel, _ := dtxConn.ForChannelRequestContext(context.Background(), messageDispatcher)
++	return channel
++}
++
++func (dtxConn *Connection) ForChannelRequestContext(ctx context.Context, messageDispatcher Dispatcher) (*Channel, error) {
++	var msg Message
++	select {
++	case msg = <-dtxConn.requestChannelMessages:
++	case <-ctx.Done():
++		return nil, ctx.Err()
++	case <-dtxConn.Closed():
++		return nil, dtxConn.Err()
++	}
+@@ -266 +282 @@ func (dtxConn *Connection) ForChannelRequest(messageDispatcher Dispatcher) *Chan
+-	return channel
++	return channel, nil
 diff --git a/ios/installationproxy/installationproxy.go b/ios/installationproxy/installationproxy.go
-index 8a70730..ed3a8ed 100644
+index 8a70730..b683398 100644
 --- a/ios/installationproxy/installationproxy.go
 +++ b/ios/installationproxy/installationproxy.go
-@@ -14,0 +15 @@ const serviceName = "com.apple.mobile.installation_proxy"
+@@ -4,0 +5 @@ import (
++	"context"
+@@ -12 +13 @@ import (
+-const logModule = "go-ios/installationproxy"
++const logModule = "Link Core/InstallationProxy"
+@@ -14,0 +16 @@ const serviceName = "com.apple.mobile.installation_proxy"
 +const shimServiceName = "com.apple.mobile.installation_proxy.shim.remote"
-@@ -65 +66,7 @@ func New(device ios.DeviceEntry) (*Connection, error) {
+@@ -65 +67,11 @@ func New(device ios.DeviceEntry) (*Connection, error) {
 -	deviceConn, err := ios.ConnectToService(device, serviceName)
++	return NewWithContext(context.Background(), device)
++}
++
++func NewWithContext(ctx context.Context, device ios.DeviceEntry) (*Connection, error) {
 +	var deviceConn ios.DeviceConnectionInterface
 +	var err error
 +	if device.SupportsRsd() {
-+		deviceConn, err = ios.ConnectToShimService(device, shimServiceName)
++		deviceConn, err = ios.ConnectToShimServiceContext(ctx, device, shimServiceName)
 +	} else {
 +		deviceConn, err = ios.ConnectToService(device, serviceName)
 +	}
+diff --git a/ios/lockdown_value.go b/ios/lockdown_value.go
+index 6edb586..d2b0c2b 100755
+--- a/ios/lockdown_value.go
++++ b/ios/lockdown_value.go
+@@ -156,0 +157,11 @@ func GetProductVersion(device DeviceEntry) (*semver.Version, error) {
++	if device.SupportsRsd() {
++		versionSource, ok := device.Rsd.(interface{ GetOSVersion() string })
++		if !ok || versionSource.GetOSVersion() == "" {
++			return nil, fmt.Errorf("GetProductVersion: RSD peer did not advertise OSVersion")
++		}
++		version, err := semver.NewVersion(versionSource.GetOSVersion())
++		if err != nil {
++			return nil, fmt.Errorf("GetProductVersion: invalid RSD OSVersion: %w", err)
++		}
++		return version, nil
++	}
+diff --git a/ios/nskeyedarchiver/attachment_optional_test.go b/ios/nskeyedarchiver/attachment_optional_test.go
+new file mode 100644
+index 0000000..cc7f3a4
+--- /dev/null
++++ b/ios/nskeyedarchiver/attachment_optional_test.go
+@@ -0,0 +1,110 @@
++package nskeyedarchiver
++
++import (
++	"bytes"
++	"strings"
++	"testing"
++
++	"howett.net/plist"
++)
++
++// This encodes the real failure-diagnostic shape: XCActivityRecord -> NSArray
++// -> XCTAttachment, whose optional userInfo points at the archive null object.
++func failureDiagnosticArchive(t *testing.T, metadata interface{}, includeMetadata bool, extra []interface{}) []byte {
++	t.Helper()
++	attachment := map[string]interface{}{
++		"$class": plist.UID(10), "lifetime": uint64(0),
++		"uniformTypeIdentifier": plist.UID(11), "fileNameOverride": plist.UID(0),
++		"timestamp": plist.UID(12), "name": plist.UID(13), "payload": plist.UID(14),
++	}
++	if includeMetadata {
++		attachment["userInfo"] = metadata
++	}
++	objects := []interface{}{
++		"$null",
++		map[string]interface{}{"$class": plist.UID(2), "finish": plist.UID(0), "start": plist.UID(0), "uuid": plist.UID(3), "title": plist.UID(5), "attachments": plist.UID(6), "activityType": plist.UID(9)},
++		map[string]interface{}{"$classname": "XCActivityRecord"},
++		map[string]interface{}{"$class": plist.UID(4), "NS.uuidbytes": make([]byte, 16)},
++		map[string]interface{}{"$classname": "NSUUID"},
++		"Failure diagnostics",
++		map[string]interface{}{"$class": plist.UID(7), "NS.objects": []interface{}{plist.UID(8)}},
++		map[string]interface{}{"$classname": "NSArray"},
++		attachment,
++		"com.apple.dt.xctest.activity-type.attachmentContainer",
++		map[string]interface{}{"$classname": "XCTAttachment"},
++		"public.plain-text",
++		float64(123),
++		"Failure diagnostic",
++		[]byte("original failure diagnostic payload"),
++	}
++	objects = append(objects, extra...)
++	data, err := plist.Marshal(map[string]interface{}{"$archiver": "NSKeyedArchiver", "$version": uint64(100000), "$objects": objects, "$top": map[string]interface{}{"root": plist.UID(1)}}, plist.BinaryFormat)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return data
++}
++
++func TestFailureDiagnosticAttachmentAllowsOptionalUserInfo(t *testing.T) {
++	for _, test := range []struct {
++		name     string
++		include  bool
++		metadata interface{}
++		extra    []interface{}
++	}{
++		{name: "absent"},
++		{name: "null UID", include: true, metadata: plist.UID(0)},
++		{name: "null sentinel", include: true, metadata: plist.UID(15), extra: []interface{}{"$null"}},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			decoded, err := Unarchive(failureDiagnosticArchive(t, test.metadata, test.include, test.extra))
++			if err != nil {
++				t.Fatal(err)
++			}
++			activity := decoded[0].(XCActivityRecord)
++			if len(activity.Attachments) != 1 {
++				t.Fatal("diagnostic attachment lost")
++			}
++			attachment := activity.Attachments[0]
++			if attachment.Name != "Failure diagnostic" || !bytes.Equal(attachment.Payload, []byte("original failure diagnostic payload")) || attachment.userInfo != nil {
++				t.Fatalf("attachment changed: %+v", attachment)
++			}
++		})
++	}
++}
++
++func TestAttachmentUserInfoDictionaryErrorsAreNotDiscarded(t *testing.T) {
++	for _, test := range []struct {
++		name     string
++		metadata interface{}
++		extra    []interface{}
++		want     string
++	}{
++		{name: "not a reference", metadata: "invalid", want: "must be an object UID"},
++		{name: "out of range", metadata: plist.UID(999), want: "out of range"},
++		{name: "not a dictionary", metadata: plist.UID(15), extra: []interface{}{"invalid"}, want: "must reference NSDictionary"},
++		{name: "malformed dictionary", metadata: plist.UID(15), extra: []interface{}{map[string]interface{}{"$class": plist.UID(16), "NS.keys": "invalid", "NS.objects": []interface{}{}}, map[string]interface{}{"$classname": "NSDictionary"}}, want: "NS.keys is not an array"},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			_, err := Unarchive(failureDiagnosticArchive(t, test.metadata, true, test.extra))
++			if err == nil || !strings.Contains(err.Error(), "XCTAttachment.userInfo") || !strings.Contains(err.Error(), test.want) {
++				t.Fatalf("malformed metadata error lost: %v", err)
++			}
++		})
++	}
++}
++
++func TestAttachmentUserInfoPreservesDictionary(t *testing.T) {
++	for _, name := range []string{"NSDictionary", "NSMutableDictionary"} {
++		t.Run(name, func(t *testing.T) {
++			extra := []interface{}{map[string]interface{}{"$class": plist.UID(16), "NS.keys": []interface{}{plist.UID(17)}, "NS.objects": []interface{}{plist.UID(18)}}, map[string]interface{}{"$classname": name}, "key", "value"}
++			decoded, err := Unarchive(failureDiagnosticArchive(t, plist.UID(15), true, extra))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if decoded[0].(XCActivityRecord).Attachments[0].userInfo["key"] != "value" {
++				t.Fatal("dictionary metadata lost")
++			}
++		})
++	}
++}
+diff --git a/ios/nskeyedarchiver/objectivec_classes.go b/ios/nskeyedarchiver/objectivec_classes.go
+index 9c0e560..5d7f409 100644
+--- a/ios/nskeyedarchiver/objectivec_classes.go
++++ b/ios/nskeyedarchiver/objectivec_classes.go
+@@ -336 +336,6 @@ func NewXCTAttachment(object map[string]interface{}, objects []interface{}) inte
+-	userInfo, _ := extractDictionary(objects[object["userInfo"].(plist.UID)].(map[string]interface{}), objects, 0)
++	userInfo, err := extractAttachmentUserInfo(object, objects)
++	if err != nil {
++		// Decoder factories have no error return. Unarchive converts this into
++		// its normal decode error; malformed metadata must not be discarded.
++		panic(fmt.Errorf("XCTAttachment.userInfo: %w", err))
++	}
+@@ -351,0 +357,41 @@ func NewXCTAttachment(object map[string]interface{}, objects []interface{}) inte
++func extractAttachmentUserInfo(object map[string]interface{}, objects []interface{}) (map[string]interface{}, error) {
++	raw, present := object["userInfo"]
++	if !present || raw == nil {
++		return nil, nil
++	}
++	ref, ok := raw.(plist.UID)
++	if !ok {
++		return nil, fmt.Errorf("must be an object UID, got %T", raw)
++	}
++	if ref == 0 {
++		return nil, nil
++	}
++	if uint64(ref) >= uint64(len(objects)) {
++		return nil, fmt.Errorf("object UID %d out of range", ref)
++	}
++	value := objects[ref]
++	if value == nil {
++		return nil, nil
++	}
++	if sentinel, ok := value.(string); ok && sentinel == null {
++		return nil, nil
++	}
++	dictionary, ok := value.(map[string]interface{})
++	if !ok {
++		return nil, fmt.Errorf("must reference NSDictionary, got %T", value)
++	}
++	classRef, ok := dictionary[class].(plist.UID)
++	if !ok || uint64(classRef) >= uint64(len(objects)) {
++		return nil, fmt.Errorf("dictionary class UID is invalid")
++	}
++	classObject, ok := objects[classRef].(map[string]interface{})
++	if !ok {
++		return nil, fmt.Errorf("dictionary class is not an object")
++	}
++	name, _ := classObject[className].(string)
++	if name != nsDictionary && name != nsMutableDictionary {
++		return nil, fmt.Errorf("must reference NSDictionary, got class %q", name)
++	}
++	return extractDictionary(dictionary, objects, 0)
++}
++
+diff --git a/ios/openstdio/service.go b/ios/openstdio/service.go
+index 4bc12fd..a82b058 100644
+--- a/ios/openstdio/service.go
++++ b/ios/openstdio/service.go
+@@ -4,0 +5 @@ import (
++	"context"
+@@ -24,0 +26,4 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
++	return NewOpenStdIoSocketContext(context.Background(), device)
++}
++
++func NewOpenStdIoSocketContext(ctx context.Context, device ios.DeviceEntry) (Connection, error) {
+@@ -33 +38 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
+-	conn, err := ios.ConnectTUNDevice(device.Address, port, device)
++	conn, err := ios.ConnectTUNDeviceContext(ctx, device.Address, port, device)
+@@ -37,0 +43,4 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
++	return readOpenStdIoSocket(conn)
++}
++
++func readOpenStdIoSocket(conn io.ReadWriteCloser) (Connection, error) {
+@@ -39 +48 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
+-	_, err = conn.Read(uuidBytes)
++	_, err := io.ReadFull(conn, uuidBytes)
+@@ -40,0 +50 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
++		conn.Close()
+@@ -45,0 +56 @@ func NewOpenStdIoSocket(device ios.DeviceEntry) (Connection, error) {
++		conn.Close()
+diff --git a/ios/openstdio/service_test.go b/ios/openstdio/service_test.go
+new file mode 100644
+index 0000000..9a1e118
+--- /dev/null
++++ b/ios/openstdio/service_test.go
+@@ -0,0 +1,46 @@
++package openstdio
++
++import (
++	"bytes"
++	"io"
++	"testing"
++
++	"github.com/google/uuid"
++)
++
++type fragmentedStdio struct {
++	io.Reader
++	closed bool
++}
++
++func (f *fragmentedStdio) Read(p []byte) (int, error) {
++	if len(p) > 3 {
++		p = p[:3]
++	}
++	return f.Reader.Read(p)
++}
++func (f *fragmentedStdio) Write(p []byte) (int, error) { return len(p), nil }
++func (f *fragmentedStdio) Close() error                { f.closed = true; return nil }
++
++func TestOpenStdIoReadsFragmentedUUID(t *testing.T) {
++	id := uuid.New()
++	socket := &fragmentedStdio{Reader: bytes.NewReader(id[:])}
++	connection, err := readOpenStdIoSocket(socket)
++	if err != nil || connection.ID != id {
++		t.Fatalf("fragmented UUID %v: %v", connection.ID, err)
++	}
++	if socket.closed {
++		t.Fatal("valid stdio socket closed")
++	}
++	connection.Close()
++}
++
++func TestOpenStdIoClosesTruncatedUUID(t *testing.T) {
++	socket := &fragmentedStdio{Reader: bytes.NewReader([]byte{1, 2, 3})}
++	if _, err := readOpenStdIoSocket(socket); err == nil {
++		t.Fatal("truncated UUID accepted")
++	}
++	if !socket.closed {
++		t.Fatal("failed stdio socket leaked")
++	}
++}
+diff --git a/ios/remote_test_transport_test.go b/ios/remote_test_transport_test.go
+new file mode 100644
+index 0000000..16f973f
+--- /dev/null
++++ b/ios/remote_test_transport_test.go
+@@ -0,0 +1,92 @@
++package ios
++
++import (
++	"context"
++	"encoding/json"
++	"io"
++	"net"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestRemoteProductVersionUsesAuthenticatedRSD(t *testing.T) {
++	var raw map[string]interface{}
++	if err := json.Unmarshal([]byte(rsdOutput), &raw); err != nil {
++		t.Fatal(err)
++	}
++	rsd, err := parseRsdHandshakeResponse(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	device := DeviceEntry{Address: "fd00::1", Rsd: rsd}
++	version, err := GetProductVersion(device)
++	if err != nil || version.String() != "17.0.3" {
++		t.Fatalf("version %v: %v", version, err)
++	}
++	rsd.OSVersion = ""
++	device.Rsd = rsd
++	if _, err := GetProductVersion(device); err == nil || !strings.Contains(err.Error(), "RSD peer") {
++		t.Fatalf("missing RSD version must fail without usbmuxd: %v", err)
++	}
++	rsd.OSVersion = "not-a-version"
++	device.Rsd = rsd
++	if _, err := GetProductVersion(device); err == nil || !strings.Contains(err.Error(), "invalid RSD") {
++		t.Fatalf("invalid RSD version: %v", err)
++	}
++}
++
++func TestServiceCancellationClosesOnlyOwnedSocket(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
++	device := DeviceEntry{UserspaceTUN: true, UserspaceTUNHost: "127.0.0.1", UserspaceTUNPort: listener.Addr().(*net.TCPAddr).Port}
++	accepted := make(chan error, 2)
++	go func() {
++		for range 2 {
++			conn, err := listener.Accept()
++			if err != nil {
++				accepted <- err
++				return
++			}
++			go func() {
++				defer conn.Close()
++				_, err := io.ReadFull(conn, make([]byte, 20))
++				accepted <- err
++				io.Copy(io.Discard, conn)
++			}()
++		}
++	}()
++	ctx, cancel := context.WithCancel(context.Background())
++	first, err := ConnectTUNDeviceContext(ctx, "fd00::1", 62000, device)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer first.Close()
++	if err := <-accepted; err != nil {
++		t.Fatal(err)
++	}
++	read := make(chan error, 1)
++	go func() { _, err := first.Read(make([]byte, 1)); read <- err }()
++	cancel()
++	select {
++	case err := <-read:
++		if err == nil {
++			t.Fatal("read succeeded after cancellation")
++		}
++	case <-time.After(time.Second):
++		t.Fatal("cancelled read remained blocked")
++	}
++	secondCtx, secondCancel := context.WithTimeout(context.Background(), time.Second)
++	defer secondCancel()
++	second, err := ConnectTUNDeviceContext(secondCtx, "fd00::1", 62001, device)
++	if err != nil {
++		t.Fatalf("parent forwarder must remain usable: %v", err)
++	}
++	defer second.Close()
++	if err := <-accepted; err != nil {
++		t.Fatal(err)
++	}
++}
 diff --git a/ios/rsd.go b/ios/rsd.go
-index 5c9e301..e1c9a8a 100644
+index 5c9e301..9486af4 100644
 --- a/ios/rsd.go
 +++ b/ios/rsd.go
-@@ -155,0 +156,4 @@ func (r RsdHandshakeResponse) GetPort(service string) int {
+@@ -94 +94 @@ func RsdCheckin(rw io.ReadWriter) error {
+-		"Label":           "go-ios",
++		"Label":           "Link Core",
+@@ -137,2 +137,3 @@ type RsdHandshakeResponse struct {
+-	Udid     string
+-	Services map[string]RsdServiceEntry
++	Udid      string
++	OSVersion string
++	Services  map[string]RsdServiceEntry
+@@ -140,0 +142,3 @@ type RsdHandshakeResponse struct {
++// GetOSVersion returns the version advertised by this authenticated RSD peer.
++func (r RsdHandshakeResponse) GetOSVersion() string { return r.OSVersion }
++
+@@ -155,0 +160,4 @@ func (r RsdHandshakeResponse) GetPort(service string) int {
 +	shim := fmt.Sprintf("%s.shim.remote", service)
 +	if s, ok := r.Services[shim]; ok {
 +		return int(s.Port)
 +	}
+@@ -211,0 +220,4 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
++	return parseRsdHandshakeResponse(m)
++}
++
++func parseRsdHandshakeResponse(m map[string]interface{}) (RsdHandshakeResponse, error) {
+@@ -212,0 +225 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
++	osVersion := ""
+@@ -213,0 +227 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
++		osVersion, _ = properties["OSVersion"].(string)
+@@ -235,2 +249,3 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
+-			Services: res,
+-			Udid:     udid,
++			Services:  res,
++			Udid:      udid,
++			OSVersion: osVersion,
 diff --git a/ios/rsd_test.go b/ios/rsd_test.go
 index 5d69ad1..7f5e691 100644
 --- a/ios/rsd_test.go
@@ -34,6 +680,296 @@ index 5d69ad1..7f5e691 100644
 +	assert.Equal(t, 62000, rsd.GetPort("com.apple.mobile.installation_proxy"))
 +}
 +
+diff --git a/ios/testmanagerd/proxydispatcher.go b/ios/testmanagerd/proxydispatcher.go
+index a1c02f3..143d422 100644
+--- a/ios/testmanagerd/proxydispatcher.go
++++ b/ios/testmanagerd/proxydispatcher.go
+@@ -21,0 +22,8 @@ func (p proxyDispatcher) Dispatch(m dtx.Message) {
++	if p.testListener != nil {
++		p.testListener.mu.Lock()
++		defer p.testListener.mu.Unlock()
++		if p.testListener.sealed {
++			dtx.SendAckIfNeeded(p.dtxConnection, m)
++			return
++		}
++	}
+diff --git a/ios/testmanagerd/remote_lifecycle_test.go b/ios/testmanagerd/remote_lifecycle_test.go
+new file mode 100644
+index 0000000..4444b9e
+--- /dev/null
++++ b/ios/testmanagerd/remote_lifecycle_test.go
+@@ -0,0 +1,92 @@
++package testmanagerd
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"os"
++	"sync"
++	"testing"
++
++	"github.com/danielpaulus/go-ios/ios/nskeyedarchiver"
++)
++
++func TestRunnerAndDTXLogsShareSynchronization(t *testing.T) {
++	var output bytes.Buffer
++	listener := NewTestListener(&output, &output, t.TempDir())
++	var done sync.WaitGroup
++	for range 10 {
++		done.Go(func() {
++			for range 10 {
++				listener.logWriter.Write([]byte("stdout\n"))
++				listener.LogMessage("event\n")
++				listener.LogDebugMessage("debug\n")
++			}
++		})
++	}
++	done.Wait()
++	if bytes.Count(output.Bytes(), []byte("\n")) != 300 {
++		t.Fatal("concurrent output was lost")
++	}
++}
++
++func TestCancelledRunNeverStartsDeviceDiscovery(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	cancel()
++	if _, err := RunTestWithConfig(ctx, TestConfig{}); !errors.Is(err, context.Canceled) {
++		t.Fatalf("cancellation lost: %v", err)
++	}
++}
++
++func TestRejectedTestSessionIsFailure(t *testing.T) {
++	if err := requireAuthorizedTestSession(false); err == nil {
++		t.Fatal("rejected test runner accepted")
++	}
++}
++
++func TestCompletedSuiteAcceptsLateAttachmentAndSnapshotIsDetached(t *testing.T) {
++	listener := NewTestListener(nil, nil, t.TempDir())
++	listener.TestSuites = []TestSuite{{Name: "Capture", TestCases: []TestCase{{ClassName: "Capture", MethodName: "testCapture", Status: StatusPassed}}}}
++	listener.testCaseFinished("Capture", "testCapture", nskeyedarchiver.XCActivityRecord{Attachments: []nskeyedarchiver.XCTAttachment{{Name: "capture", Payload: []byte("PNG")}}})
++	suites, err := listener.resultSnapshot()
++	if err != nil || len(suites[0].TestCases[0].Attachments) != 1 {
++		t.Fatalf("late attachment missing: %+v %v", suites, err)
++	}
++	attachment := suites[0].TestCases[0].Attachments[0]
++	if data, err := os.ReadFile(attachment.Path); err != nil || string(data) != "PNG" {
++		t.Fatalf("attachment not flushed: %q %v", data, err)
++	}
++	listener.TestSuites[0].TestCases[0].Attachments[0].Name = "mutated"
++	if attachment.Name != "capture" || suites[0].TestCases[0].Attachments[0].Name != "capture" {
++		t.Fatal("snapshot aliases listener storage")
++	}
++	listener.FinishWithError(context.Canceled)
++	if listener.err != nil {
++		t.Fatal("sealed result mutated by late cancellation")
++	}
++}
++
++func TestNestedParentCompletionPreservesPassedCaseAndLateAttachment(t *testing.T) {
++	listener := NewTestListener(nil, nil, t.TempDir())
++	date := "2026-09-09 18:52:57 +0000"
++	listener.testSuiteDidStart("Selected tests", date)
++	listener.testSuiteDidStart("Capture", date)
++	listener.testCaseDidStartForClass("Capture", "testCapture")
++	listener.testCaseDidFinishForTest("Capture", "testCapture", "passed", 1)
++	listener.testSuiteFinished("Capture", date, 1, 0, 0, 0, 0, 0, 1, 1)
++	// iOS emits the enclosing suite completion after the leaf suite has ended.
++	listener.testSuiteFinished("Selected tests", date, 1, 0, 0, 0, 0, 0, 1, 1)
++	listener.testCaseFinished("Capture", "testCapture", nskeyedarchiver.XCActivityRecord{Attachments: []nskeyedarchiver.XCTAttachment{{Name: "late", Payload: []byte("PNG")}}})
++	listener.didFinishExecutingTestPlan()
++	suites, err := listener.resultSnapshot()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(suites) != 2 || len(suites[1].TestCases) != 1 {
++		t.Fatalf("unexpected nested results: %+v", suites)
++	}
++	test := suites[1].TestCases[0]
++	if test.Status != StatusPassed || len(test.Attachments) != 1 || test.Attachments[0].Name != "late" {
++		t.Fatalf("leaf evidence changed: %+v", test)
++	}
++}
+diff --git a/ios/testmanagerd/testlistener.go b/ios/testmanagerd/testlistener.go
+index 321bb91..7daec63 100644
+--- a/ios/testmanagerd/testlistener.go
++++ b/ios/testmanagerd/testlistener.go
+@@ -19,0 +20,2 @@ type TestListener struct {
++	mu                   sync.Mutex
++	sealed               bool
+@@ -81,0 +84,3 @@ func NewTestListener(logWriter io.Writer, debugLogWriter io.Writer, attachmentsD
++	var logMu sync.Mutex
++	logWriter = synchronizedTestWriter{mu: &logMu, writer: logWriter}
++	debugLogWriter = synchronizedTestWriter{mu: &logMu, writer: debugLogWriter}
+@@ -126 +130,0 @@ func (t *TestListener) testCaseFinished(testClass string, testMethod string, xcA
+-	ts := t.findTestSuite(testClass)
+@@ -128 +132 @@ func (t *TestListener) testCaseFinished(testClass string, testMethod string, xcA
+-	if ts == nil || testCase == nil || testClass == "none" || testMethod == "none" {
++	if testCase == nil || testClass == "none" || testMethod == "none" {
+@@ -132 +136,4 @@ func (t *TestListener) testCaseFinished(testClass string, testMethod string, xcA
+-		ts = t.runningTestSuite
++		ts := t.runningTestSuite
++		if ts == nil && len(t.TestSuites) > 0 {
++			ts = &t.TestSuites[len(t.TestSuites)-1]
++		}
+@@ -314,2 +321 @@ func (t *TestListener) TestRunnerKilled() {
+-	t.err = errors.New("Test runner has been explicitly killed.")
+-	t.executionFinished()
++	t.FinishWithError(errors.New("Test runner has been explicitly killed."))
+@@ -318,0 +325,5 @@ func (t *TestListener) FinishWithError(err error) {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	if t.sealed {
++		return
++	}
+@@ -350,0 +362,8 @@ func (t *TestListener) findTestCase(className string, methodName string) *TestCa
++	for i := len(t.TestSuites) - 1; i >= 0; i-- {
++		for j := len(t.TestSuites[i].TestCases) - 1; j >= 0; j-- {
++			test := &t.TestSuites[i].TestCases[j]
++			if test.ClassName == className && test.MethodName == methodName {
++				return test
++			}
++		}
++	}
+@@ -353,0 +373,2 @@ func (t *TestListener) findTestCase(className string, methodName string) *TestCa
++// Lifecycle transitions only target the active suite. Completed suites are
++// searched by findTestCase for late attachments, never reopened for completion.
+@@ -355,4 +376,2 @@ func (t *TestListener) findTestSuite(className string) *TestSuite {
+-	if t.runningTestSuite != nil {
+-		if t.runningTestSuite.Name == className {
+-			return t.runningTestSuite
+-		}
++	if t.runningTestSuite != nil && t.runningTestSuite.Name == className {
++		return t.runningTestSuite
+@@ -360 +378,0 @@ func (t *TestListener) findTestSuite(className string) *TestSuite {
+-
+@@ -370,0 +389,3 @@ func (t *TestListener) reset() {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	t.sealed = false
+@@ -385,0 +407,28 @@ func (t *TestListener) reset() {
++
++// resultSnapshot seals callbacks after the final test-plan event and returns
++// detached slices, so daemon serialization never races a DTX reader.
++func (t *TestListener) resultSnapshot() ([]TestSuite, error) {
++	t.mu.Lock()
++	defer t.mu.Unlock()
++	t.sealed = true
++	suites := append([]TestSuite(nil), t.TestSuites...)
++	for i := range suites {
++		suites[i].TestCases = append([]TestCase(nil), suites[i].TestCases...)
++		for j := range suites[i].TestCases {
++			suites[i].TestCases[j].Attachments = append([]TestAttachment(nil), suites[i].TestCases[j].Attachments...)
++		}
++	}
++	return suites, t.err
++}
++
++// DTX callbacks and runner stdio may write the same destination concurrently.
++type synchronizedTestWriter struct {
++	mu     *sync.Mutex
++	writer io.Writer
++}
++
++func (w synchronizedTestWriter) Write(data []byte) (int, error) {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	return w.writer.Write(data)
++}
+diff --git a/ios/testmanagerd/xcuitestrunner.go b/ios/testmanagerd/xcuitestrunner.go
+index 287d5d5..4adb54b 100644
+--- a/ios/testmanagerd/xcuitestrunner.go
++++ b/ios/testmanagerd/xcuitestrunner.go
+@@ -11,0 +12 @@ import (
++	"time"
+@@ -323 +324,12 @@ func StartXCTestWithConfig(ctx context.Context, xctestrunFilePath string, device
+-func RunTestWithConfig(ctx context.Context, testConfig TestConfig) ([]TestSuite, error) {
++func RunTestWithConfig(ctx context.Context, testConfig TestConfig) (suites []TestSuite, runErr error) {
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	if testConfig.Listener == nil {
++		return nil, errors.New("RunTestWithConfig: listener is required")
++	}
++	defer func() {
++		if ctx.Err() != nil {
++			runErr = errors.Join(runErr, ctx.Err())
++		}
++	}()
+@@ -351 +363,4 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	conn1, err := dtx.NewTunnelConnection(config.Device, testmanagerdiOS17)
++	ctx, cancel := context.WithCancel(ctx)
++	defer cancel()
++	defer config.Listener.resultSnapshot()
++	conn1, err := dtx.NewTunnelConnectionContext(ctx, config.Device, testmanagerdiOS17)
+@@ -357 +372 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	conn2, err := dtx.NewTunnelConnection(config.Device, testmanagerdiOS17)
++	conn2, err := dtx.NewTunnelConnectionContext(ctx, config.Device, testmanagerdiOS17)
+@@ -363 +378 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	installationProxy, err := installationproxy.New(config.Device)
++	installationProxy, err := installationproxy.NewWithContext(ctx, config.Device)
+@@ -413 +428 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	appserviceConn, err := appservice.New(config.Device)
++	appserviceConn, err := appservice.NewWithContext(ctx, config.Device)
+@@ -424 +439,6 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	defer testRunnerLaunch.Close()
++	defer stopRemoteTestRunner(config.Device, testRunnerLaunch.Pid)
++	logDone := make(chan struct{})
++	defer func() {
++		testRunnerLaunch.Close()
++		<-logDone
++	}()
+@@ -425,0 +446 @@ func runXUITestWithBundleIdsXcode15Ctx(
++		defer close(logDone)
+@@ -441,0 +463,3 @@ func runXUITestWithBundleIdsXcode15Ctx(
++	if err := requireAuthorizedTestSession(authorized); err != nil {
++		return nil, err
++	}
+@@ -444 +468 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	ideInterfaceChannel := ideDaemonProxy1.dtxConnection.ForChannelRequest(proxyDispatcher{id: "dtxproxy:XCTestDriverInterface:XCTestManager_IDEInterface", testListener: noopTestListener()})
++	ideInterfaceChannel, err := ideDaemonProxy1.dtxConnection.ForChannelRequestContext(ctx, proxyDispatcher{id: "dtxproxy:XCTestDriverInterface:XCTestManager_IDEInterface", testListener: noopTestListener()})
+@@ -445,0 +470,3 @@ func runXUITestWithBundleIdsXcode15Ctx(
++	if err != nil {
++		return nil, fmt.Errorf("waiting for XCTest driver channel: %w", err)
++	}
+@@ -469,0 +497 @@ func runXUITestWithBundleIdsXcode15Ctx(
++		config.Listener.FinishWithError(ctx.Err())
+@@ -472,8 +499,0 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	golog.Info("Killing test runner", "module", logModule, "udid", config.Device.Properties.SerialNumber, "pid", testRunnerLaunch.Pid)
+-	err = killTestRunner(appserviceConn, testRunnerLaunch.Pid)
+-	if err != nil {
+-		golog.Info("Nothing to kill, process is already dead", "module", logModule, "udid", config.Device.Properties.SerialNumber, "pid", testRunnerLaunch.Pid)
+-	} else {
+-		golog.Info("Test runner killed with success", "module", logModule, "udid", config.Device.Properties.SerialNumber)
+-	}
+-
+@@ -482 +502,24 @@ func runXUITestWithBundleIdsXcode15Ctx(
+-	return config.Listener.TestSuites, config.Listener.err
++	return config.Listener.resultSnapshot()
++}
++
++func requireAuthorizedTestSession(authorized bool) error {
++	if !authorized {
++		return errors.New("testmanagerd rejected authorization for the test runner")
++	}
++	return nil
++}
++
++// Cleanup has its own short lifetime because the run context may be cancelled.
++// It opens only a service socket on the existing tunnel; it never reacquires pairing.
++func stopRemoteTestRunner(device ios.DeviceEntry, pid int) {
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	service, err := appservice.NewWithContext(ctx, device)
++	if err != nil {
++		golog.Warn("test runner cleanup connection failed", "module", logModule, "error", err)
++		return
++	}
++	defer service.Close()
++	if err := killTestRunner(service, pid); err != nil {
++		golog.Debug("test runner cleanup did not kill a process", "module", logModule, "error", err)
++	}
 diff --git a/ios/tunnel/codec.go b/ios/tunnel/codec.go
 index c821983..6fa94b7 100644
 --- a/ios/tunnel/codec.go
@@ -80,7 +1016,7 @@ index c821983..6fa94b7 100644
 @@ -231,0 +253 @@ func (c *cipherStream) read(p *map[string]interface{}) error {
 +		return json.Unmarshal(plain, p)
 diff --git a/ios/tunnel/pairrecord.go b/ios/tunnel/pairrecord.go
-index 14c6c4d..31b47be 100644
+index 14c6c4d..9ad08a9 100644
 --- a/ios/tunnel/pairrecord.go
 +++ b/ios/tunnel/pairrecord.go
 @@ -3,0 +4 @@ import (
@@ -330,6 +1266,91 @@ index 0000000..9bb2d65
 +	require.NoError(t, err)
 +	assert.Equal(t, raw, decoded)
 +}
+diff --git a/ios/tunnel/rwcendpoint.go b/ios/tunnel/rwcendpoint.go
+index e56a38b..806b08a 100644
+--- a/ios/tunnel/rwcendpoint.go
++++ b/ios/tunnel/rwcendpoint.go
+@@ -50,0 +51,3 @@ type Endpoint struct {
++	// done receives the terminal read error that stopped the inbound packet pump.
++	done chan error
++
+@@ -113,0 +117 @@ func RWCEndpointNew(rw io.ReadWriter, mtu uint32, offset int) (*Endpoint, error)
++		done:     make(chan error, 1),
+@@ -138,0 +143,5 @@ func (e *Endpoint) Wait() {
++// Done reports the terminal read error that stopped the tunnel data plane.
++func (e *Endpoint) Done() <-chan error {
++	return e.done
++}
++
+@@ -157,0 +167,2 @@ func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
++			e.done <- err
++			close(e.done)
+diff --git a/ios/tunnel/rwcendpoint_done_test.go b/ios/tunnel/rwcendpoint_done_test.go
+new file mode 100644
+index 0000000..838feb4
+--- /dev/null
++++ b/ios/tunnel/rwcendpoint_done_test.go
+@@ -0,0 +1,37 @@
++package tunnel
++
++import (
++	"context"
++	"errors"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/require"
++)
++
++type terminalReadWriter struct {
++	err error
++}
++
++func (rw terminalReadWriter) Read([]byte) (int, error) {
++	return 0, rw.err
++}
++
++func (terminalReadWriter) Write(p []byte) (int, error) {
++	return len(p), nil
++}
++
++func TestEndpointDoneReportsTerminalReadError(t *testing.T) {
++	want := errors.New("outer transport stopped")
++	endpoint, err := RWCEndpointNew(terminalReadWriter{err: want}, 1500, 0)
++	require.NoError(t, err)
++	_, cancel := context.WithCancel(context.Background())
++	go endpoint.dispatchLoop(cancel)
++
++	select {
++	case got := <-endpoint.Done():
++		require.ErrorIs(t, got, want)
++	case <-time.After(time.Second):
++		t.Fatal("endpoint did not report terminal read error")
++	}
++}
+diff --git a/ios/tunnel/tunnel.go b/ios/tunnel/tunnel.go
+index cd1bba6..399fd3c 100644
+--- a/ios/tunnel/tunnel.go
++++ b/ios/tunnel/tunnel.go
+@@ -27 +27 @@ import (
+-const logModule = "go-ios/tunnel"
++const logModule = "Link Core/Tunnel"
+@@ -40,0 +41 @@ type Tunnel struct {
++	done             <-chan error
+@@ -47,0 +49,6 @@ func (t Tunnel) Close() error {
++// Done reports terminal failure of a userspace tunnel's outer packet pump.
++// Non-userspace tunnels return nil because they do not expose this lifecycle.
++func (t Tunnel) Done() <-chan error {
++	return t.done
++}
++
+diff --git a/ios/tunnel/tunnel_api.go b/ios/tunnel/tunnel_api.go
+index 4dfde47..968e3c3 100644
+--- a/ios/tunnel/tunnel_api.go
++++ b/ios/tunnel/tunnel_api.go
+@@ -47 +47 @@ func WaitUntilAgentReady() bool {
+-		golog.Info("Waiting for go-ios agent to be ready...", "module", logModule)
++		golog.Info("Waiting for Link Core agent to be ready...", "module", logModule)
 diff --git a/ios/tunnel/tunnel_tcp.go b/ios/tunnel/tunnel_tcp.go
 index c4fabda..600c28b 100644
 --- a/ios/tunnel/tunnel_tcp.go
@@ -422,7 +1443,7 @@ index c4fabda..600c28b 100644
 +}
 +
 diff --git a/ios/tunnel/untrusted.go b/ios/tunnel/untrusted.go
-index b58704b..8d0d1df 100644
+index b58704b..ade576f 100644
 --- a/ios/tunnel/untrusted.go
 +++ b/ios/tunnel/untrusted.go
 @@ -28,0 +29,4 @@ func newTunnelServiceWithXpc(xpcConn *xpc.Connection, c io.Closer, pairRecords P
@@ -469,6 +1490,28 @@ index b58704b..8d0d1df 100644
 +	err := t.VerifyPair()
 @@ -81 +94,0 @@ func (t *tunnelService) ManualPair() error {
 -	err = t.verifyPair()
+@@ -495 +508 @@ func (t *tunnelService) exchangeDeviceInfo(sessionKey []byte) error {
+-		"model":                       "go-ios",
++		"model":                       "Link Core",
+diff --git a/ios/tunnel/userspace_tunnel.go b/ios/tunnel/userspace_tunnel.go
+index 37248c5..234a51e 100644
+--- a/ios/tunnel/userspace_tunnel.go
++++ b/ios/tunnel/userspace_tunnel.go
+@@ -56,0 +57,5 @@ type UserSpaceTUNInterface struct {
++// Done reports terminal failure of the outer userspace packet pump.
++func (iface *UserSpaceTUNInterface) Done() <-chan error {
++	return iface.endpoint.Done()
++}
++
+@@ -270,0 +276 @@ func connectToUserspaceTunnelLockdown(ctx context.Context, device ios.DeviceEntr
++		done:    iface.Done(),
+diff --git a/ios/zipconduit/zip_utils.go b/ios/zipconduit/zip_utils.go
+index c8c99ad..a0a7382 100644
+--- a/ios/zipconduit/zip_utils.go
++++ b/ios/zipconduit/zip_utils.go
+@@ -8 +8 @@ import (
+-const logModule = "go-ios/zipconduit"
++const logModule = "Link Core/ZipConduit"
 diff --git a/ios/zipconduit/zipconduit_installer.go b/ios/zipconduit/zipconduit_installer.go
 index 754b47f..64d1d64 100644
 --- a/ios/zipconduit/zipconduit_installer.go
@@ -512,132 +1555,3 @@ index 754b47f..64d1d64 100644
 +		if handler != nil {
 +			handler(percent, status)
 +		}
-diff --git a/ios/tunnel/rwcendpoint.go b/ios/tunnel/rwcendpoint.go
-index e56a38b..806b08a 100644
---- a/ios/tunnel/rwcendpoint.go
-+++ b/ios/tunnel/rwcendpoint.go
-@@ -50,0 +51,3 @@ type Endpoint struct {
-+	// done receives the terminal read error that stopped the inbound packet pump.
-+	done chan error
-+
-@@ -113,0 +117 @@ func RWCEndpointNew(rw io.ReadWriter, mtu uint32, offset int) (*Endpoint, error)
-+		done:     make(chan error, 1),
-@@ -138,0 +143,5 @@ func (e *Endpoint) Wait() {
-+// Done reports the terminal read error that stopped the tunnel data plane.
-+func (e *Endpoint) Done() <-chan error {
-+	return e.done
-+}
-+
-@@ -157,0 +167,2 @@ func (e *Endpoint) dispatchLoop(cancel context.CancelFunc) {
-+			e.done <- err
-+			close(e.done)
-diff --git a/ios/tunnel/rwcendpoint_done_test.go b/ios/tunnel/rwcendpoint_done_test.go
-new file mode 100644
-index 0000000..838feb4
---- /dev/null
-+++ b/ios/tunnel/rwcendpoint_done_test.go
-@@ -0,0 +1,37 @@
-+package tunnel
-+
-+import (
-+	"context"
-+	"errors"
-+	"testing"
-+	"time"
-+
-+	"github.com/stretchr/testify/require"
-+)
-+
-+type terminalReadWriter struct {
-+	err error
-+}
-+
-+func (rw terminalReadWriter) Read([]byte) (int, error) {
-+	return 0, rw.err
-+}
-+
-+func (terminalReadWriter) Write(p []byte) (int, error) {
-+	return len(p), nil
-+}
-+
-+func TestEndpointDoneReportsTerminalReadError(t *testing.T) {
-+	want := errors.New("outer transport stopped")
-+	endpoint, err := RWCEndpointNew(terminalReadWriter{err: want}, 1500, 0)
-+	require.NoError(t, err)
-+	_, cancel := context.WithCancel(context.Background())
-+	go endpoint.dispatchLoop(cancel)
-+
-+	select {
-+	case got := <-endpoint.Done():
-+		require.ErrorIs(t, got, want)
-+	case <-time.After(time.Second):
-+		t.Fatal("endpoint did not report terminal read error")
-+	}
-+}
-diff --git a/ios/tunnel/tunnel.go b/ios/tunnel/tunnel.go
-index cd1bba6..7f188bc 100644
---- a/ios/tunnel/tunnel.go
-+++ b/ios/tunnel/tunnel.go
-@@ -40,0 +41 @@ type Tunnel struct {
-+	done             <-chan error
-@@ -47,0 +49,6 @@ func (t Tunnel) Close() error {
-+// Done reports terminal failure of a userspace tunnel's outer packet pump.
-+// Non-userspace tunnels return nil because they do not expose this lifecycle.
-+func (t Tunnel) Done() <-chan error {
-+	return t.done
-+}
-+
-diff --git a/ios/tunnel/userspace_tunnel.go b/ios/tunnel/userspace_tunnel.go
-index 37248c5..234a51e 100644
---- a/ios/tunnel/userspace_tunnel.go
-+++ b/ios/tunnel/userspace_tunnel.go
-@@ -56,0 +57,5 @@ type UserSpaceTUNInterface struct {
-+// Done reports terminal failure of the outer userspace packet pump.
-+func (iface *UserSpaceTUNInterface) Done() <-chan error {
-+	return iface.endpoint.Done()
-+}
-+
-@@ -270,0 +276 @@ func connectToUserspaceTunnelLockdown(ctx context.Context, device ios.DeviceEntr
-+		done:    iface.Done(),
-diff --git a/ios/installationproxy/installationproxy.go b/ios/installationproxy/installationproxy.go
-index 8a70730..563e2c2 100644
---- a/ios/installationproxy/installationproxy.go
-+++ b/ios/installationproxy/installationproxy.go
-@@ -12 +12 @@ import (
--const logModule = "go-ios/installationproxy"
-+const logModule = "Link Core/InstallationProxy"
-diff --git a/ios/rsd.go b/ios/rsd.go
-index 5c9e301..d92eabd 100644
---- a/ios/rsd.go
-+++ b/ios/rsd.go
-@@ -94 +94 @@ func RsdCheckin(rw io.ReadWriter) error {
--		"Label":           "go-ios",
-+		"Label":           "Link Core",
-diff --git a/ios/tunnel/tunnel.go b/ios/tunnel/tunnel.go
-index cd1bba6..399fd3c 100644
---- a/ios/tunnel/tunnel.go
-+++ b/ios/tunnel/tunnel.go
-@@ -27 +27 @@ import (
--const logModule = "go-ios/tunnel"
-+const logModule = "Link Core/Tunnel"
-diff --git a/ios/tunnel/tunnel_api.go b/ios/tunnel/tunnel_api.go
-index 4dfde47..968e3c3 100644
---- a/ios/tunnel/tunnel_api.go
-+++ b/ios/tunnel/tunnel_api.go
-@@ -47 +47 @@ func WaitUntilAgentReady() bool {
--		golog.Info("Waiting for go-ios agent to be ready...", "module", logModule)
-+		golog.Info("Waiting for Link Core agent to be ready...", "module", logModule)
-diff --git a/ios/tunnel/untrusted.go b/ios/tunnel/untrusted.go
-index b58704b..ade576f 100644
---- a/ios/tunnel/untrusted.go
-+++ b/ios/tunnel/untrusted.go
-@@ -495 +508 @@ func (t *tunnelService) exchangeDeviceInfo(sessionKey []byte) error {
--		"model":                       "go-ios",
-+		"model":                       "Link Core",
-diff --git a/ios/zipconduit/zip_utils.go b/ios/zipconduit/zip_utils.go
-index c8c99ad..a0a7382 100644
---- a/ios/zipconduit/zip_utils.go
-+++ b/ios/zipconduit/zip_utils.go
-@@ -8 +8 @@ import (
--const logModule = "go-ios/zipconduit"
-+const logModule = "Link Core/ZipConduit"

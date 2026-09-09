@@ -348,14 +348,19 @@ Nodus Remote Deploy 使用 [MIT License](LICENSE) 发布。Link Core 衍生自
 
 ## Remote capture preview
 
-Capture development adds a daemon screenshot operation using the existing
-go-ios dependency. Preview 3 was activated on 2026-09-08 using the existing
-pairing identity. The deployment session recovered; the first physical
-screenshot timed out. See [Remote Capture](docs/remote-capture.md) for the
-activation evidence and outstanding capture checks.
+Capture uses the existing go-ios dependency and pairing identity. Preview 6
+is active with native test execution and original screenshot attachments.
+Physical tap, swipe and scroll checks have passed. Standalone Instruments
+screenshot has both a successful full-frame capture and a later timeout;
+see [Remote Capture](docs/remote-capture.md) for the separate operation and
+network evidence.
 
 The capture candidate uses raw PNG bodies after a bounded JSON result header.
 Build and tests are now separate from installation: `scripts/build.sh` writes
 only the local `.build/nodus-remote-deploy`; `scripts/test.sh` never installs it.
 The dynamic acquisition route is native XCTest, with WebDriverAgent excluded.
-See [Remote Capture](docs/remote-capture.md) revision 1.2.0-design.3.
+Preview 6 adds `run-tests` for selected signed XCTest methods, full-frame PNG
+attachments and explicit completion checks over the existing Tailnet session.
+It does not depend on an Xcode Run Destination. See
+[Remote Capture](docs/remote-capture.md) revision 1.2.0-design.6 for the command,
+network boundary and separately recorded physical acceptance.

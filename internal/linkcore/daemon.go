@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/danielpaulus/go-ios/ios/testmanagerd"
 )
 
 const (
@@ -43,6 +46,7 @@ type Daemon struct {
 
 type sessionHandle interface {
 	Screenshot(context.Context) ([]byte, error)
+	RunTests(context.Context, TestRunRequest, io.Writer, string) ([]testmanagerd.TestSuite, error)
 	Close() error
 	Done() <-chan error
 	Install(context.Context, AppBundle, func(int, string)) error
@@ -245,6 +249,22 @@ func (d *Daemon) handleConnection(ctx context.Context, connection net.Conn) {
 	}
 	encoder := &safeEncoder{encoder: jsonEncoder(connection)}
 	switch request.Command {
+	case "run-tests":
+		testCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		// The client sends exactly one request. EOF means its owner cancelled or
+		// disconnected; cancel this test without tearing down the pairing tunnel.
+		go func() { _, _ = io.Copy(io.Discard, connection); cancel() }()
+		_ = connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if err := encoder.Encode(Response{OK: true, Event: "tests_started", State: d.Snapshot().State}); err != nil {
+			return
+		}
+		result, err := d.runTests(testCtx, *request.TestRun)
+		if err != nil {
+			result = errorResponse(err)
+		}
+		_ = connection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		_ = encoder.Encode(result)
 	case "screenshot":
 		result, err := d.screenshot(ctx)
 		if err != nil {

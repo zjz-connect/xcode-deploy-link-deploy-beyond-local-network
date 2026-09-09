@@ -3,19 +3,30 @@ package linkcore
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/danielpaulus/go-ios/ios/testmanagerd"
 )
 
 type fakeSession struct {
+	runTests   func(context.Context, TestRunRequest, io.Writer, string) ([]testmanagerd.TestSuite, error)
 	screenshot func(context.Context) ([]byte, error)
 	closed     atomic.Int32
 	done       chan error
 	install    func(context.Context, AppBundle, func(int, string)) error
 	uninstall  func(context.Context, string) error
+}
+
+func (s *fakeSession) RunTests(ctx context.Context, request TestRunRequest, log io.Writer, attachments string) ([]testmanagerd.TestSuite, error) {
+	if s.runTests != nil {
+		return s.runTests(ctx, request, log, attachments)
+	}
+	return nil, nil
 }
 
 func (s *fakeSession) Screenshot(ctx context.Context) ([]byte, error) {

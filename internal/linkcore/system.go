@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const ModuleVersion = "1.2.0-capture-preview.3"
+const ModuleVersion = "1.2.0-capture-preview.6"
 const PinnedLinkCoreCommit = "3ebc297691a9e364772aef027744ebc0c49421a5"
 
 type DoctorReport struct {

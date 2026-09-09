@@ -148,7 +148,7 @@ The canonical identity cutover passed on 2026-08-31 from source commit
 - only after that acceptance, the superseded LaunchAgent plist and runtime
   root were removed. The pairing record remained at its external authority.
 
-## v1.2.0 capture candidate, design revision 2
+## v1.2.0 capture candidate, design revision 6
 
 Capture reuses the existing verified Session and returns raw PNG bytes over the
 local control socket. The generation is recorded while the operation lock is
@@ -159,6 +159,14 @@ user-authorized activation replaced the installed executable with capture previe
 3 and restarted the same LaunchAgent without changing its profile or pairing.
 The deployment session recovered; physical screenshot acquisition timed out.
 See Remote Capture for the activation evidence and outstanding capture checks.
+
+Preview 6 adds native testmanagerd execution to the same serialized session.
+The authenticated RSD handshake supplies the device OS version. Selected tests
+use the RSD testmanagerd, appservice and openstdio services, without local Xcode
+discovery or usbmuxd. A private result directory holds structured completion
+results and original PNG attachments. Client disconnect and timeout cancel only
+the inner operation. Passing requires each selected method to finish exactly
+once and every required PNG to exist and decode completely.
 
 ## Build metadata authority
 
