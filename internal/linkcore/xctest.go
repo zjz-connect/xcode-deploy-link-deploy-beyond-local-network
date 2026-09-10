@@ -71,11 +71,12 @@ func validateTestRun(r *TestRunRequest) error {
 }
 
 func (s *Session) RunTests(ctx context.Context, request TestRunRequest, log io.Writer, attachments string) ([]testmanagerd.TestSuite, error) {
-	if err := ctx.Err(); err != nil {
+	device, err := s.captureDevice(ctx)
+	if err != nil {
 		return nil, err
 	}
 	for _, service := range []string{"com.apple.dt.testmanagerd.remote", "com.apple.coredevice.appservice", "com.apple.coredevice.openstdiosocket"} {
-		if s.device.Rsd.GetPort(service) == 0 {
+		if device.Rsd.GetPort(service) == 0 {
 			return nil, coded("test_service_unavailable", "the active device does not advertise "+service, nil)
 		}
 	}
@@ -83,7 +84,7 @@ func (s *Session) RunTests(ctx context.Context, request TestRunRequest, log io.W
 	suites, err := testmanagerd.RunTestWithConfig(ctx, testmanagerd.TestConfig{
 		BundleId: request.AppID, TestRunnerBundleId: request.RunnerID,
 		XctestConfigName: request.TestBundle, TestsToRun: request.Tests,
-		Device: s.device, Listener: listener,
+		Device: device, Listener: listener,
 	})
 	if ctx.Err() != nil {
 		return suites, ctx.Err()

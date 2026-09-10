@@ -1,8 +1,8 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.6
-Candidate version: 1.2.0-capture-preview.6
-Status: cellular native capture flow verified; standalone screenshot intermittent timeout remains unexplained
+Document revision: 1.2.0-design.7
+Candidate version: 1.2.0-capture-preview.7
+Status: preview 7 discovery fix built and active; physical XCTest collection awaits an unlocked, prepared device
 
 ## Scope and transport
 
@@ -142,3 +142,41 @@ Local evidence is under `.build/remote-acceptance`. The completed cellular run,
 verified images and user-confirmed network fulfill native capture-flow acceptance.
 General free-form phone control and unattended cold acquisition on cellular are
 outside this verification.
+
+## Developer service discovery after image mounting
+
+A recovered pairing tunnel can advertise installation services while the
+personalized developer image is not mounted. On 2026-09-09, fresh authenticated
+RSD and LookupImage showed exactly this state at generation 2: developer mode
+was enabled, image signature count was zero and XCTest/appservice/openstdio
+were absent. Installation success must not be interpreted as capture readiness.
+
+For each serialized screenshot or native-test operation, read a fresh RSD
+handshake over the existing userspace tunnel and verify its device identity.
+Use that operation-local immutable DeviceEntry for all service checks and
+connections. Do not consult the acquisition-time cached service map, restart
+pairing as a discovery strategy, mutate a shared map or retry a missing service
+blindly. Developer image mounting can add services without replacing the outer
+tunnel. Discovery failure affects only the requested operation. Cancellation
+closes the inner discovery connection and preserves the deployment session.
+The original pinned native service codecs and test execution remain authoritative.
+
+The context-aware RSD constructor uses the existing `ConnectTUNDeviceContext`
+socket and the pinned HTTP/2, XPC and RSD codec. Local forwarder fixtures verify
+fresh and removed service ports, unchanged prior snapshots, peer mismatch,
+cancellation during HTTP/2 startup, XPC startup and RSD handshake, and socket
+cleanup on constructor failure. These checks do not require a connected phone.
+
+This change does not add automatic DDI downloads or image mounting. The existing
+local Xcode image can be mounted as a separate verified preparation action;
+service discovery must then observe the services actually advertised.
+
+Preview 7 passed the pinned dependency package tests, module tests, race checks
+and vet, and was installed and activated only after Doctor confirmed the remote
+listener was open. The process PID changed and the profile bytes stayed unchanged;
+the new daemon acquired an active generation 1 session. A formal screenshot call
+then returned an untouched 1320 × 2868 PNG. The image was solid black while the
+screen was off, so it is only transport evidence, never an accepted handbook
+capture. Current native XCTest readiness is verified separately from that call.
+Earlier preview 6 cellular interaction evidence above remains historical, not a
+claim that this new build has completed the pending image replacement queue.

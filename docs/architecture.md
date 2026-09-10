@@ -175,3 +175,5 @@ the CLI. The build script reads the same pinned commit for dependency checkout,
 and injects only the actual downstream patch digest. The version command runs
 the shared metadata validator before returning success, closing the previous
 gap between a passing build/test and a doctor-rejected version.
+
+Capture discovery revision 1.2.0-design.7: screenshot and XCTest operations obtain an identity-verified fresh RSD snapshot over their existing tunnel before using developer services. The acquisition map is installation bootstrap data, not permanent capture readiness. See remote-capture.md.

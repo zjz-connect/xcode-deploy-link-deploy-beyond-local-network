@@ -59,45 +59,51 @@ func OpenSession(ctx context.Context, config Config) (*Session, error) {
 	device.UserspaceTUN = true
 	device.UserspaceTUNHost = "127.0.0.1"
 	device.UserspaceTUNPort = config.LocalForwardPort
-	rsdService, err := ios.NewWithAddrPortDevice(tun.Address, tun.RsdPort, device)
+	device, err = discoverDevice(ctx, device, tun.Address, tun.RsdPort)
 	if err != nil {
 		_ = tun.Close()
-		return nil, coded("tunnel_failed", "could not connect to RSD", err)
+		return nil, err
 	}
-	type handshakeResult struct {
-		response ios.RsdHandshakeResponse
-		err      error
-	}
-	handshake := make(chan handshakeResult, 1)
-	go func() {
-		response, handshakeErr := rsdService.Handshake()
-		handshake <- handshakeResult{response: response, err: handshakeErr}
-	}()
-	var rsd ios.RsdHandshakeResponse
-	select {
-	case <-ctx.Done():
-		_ = rsdService.Close()
-		_ = tun.Close()
-		return nil, coded("tunnel_failed", "RSD handshake timed out", ctx.Err())
-	case result := <-handshake:
-		_ = rsdService.Close()
-		if result.err != nil {
-			_ = tun.Close()
-			return nil, coded("tunnel_failed", "RSD handshake failed", result.err)
-		}
-		rsd = result.response
-	}
-	if rsd.Udid != config.RemoteIdentifier {
-		_ = tun.Close()
-		return nil, coded("rsd_identity_mismatch", "RSD identity differs from the configured device", nil)
-	}
-	device.Rsd = rsd
 	session := &Session{device: device, tunnel: tun}
 	if _, err := session.browseUserApps(ctx); err != nil {
 		_ = session.Close()
 		return nil, coded("tunnel_failed", "InstallationProxy readiness check failed", err)
 	}
 	return session, nil
+}
+
+// discoverDevice uses the authenticated tunnel's endpoint and an independent
+// RSD response. The acquisition-time device and its service map stay immutable.
+func discoverDevice(ctx context.Context, base ios.DeviceEntry, address string, port int) (ios.DeviceEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return ios.DeviceEntry{}, err
+	}
+	service, err := ios.NewWithAddrPortDeviceContext(ctx, address, port, base)
+	if err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return ios.DeviceEntry{}, coded("rsd_discovery_failed", "could not open discovery on the current tunnel", err)
+	}
+	defer service.Close()
+	rsd, err := service.Handshake()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err != nil {
+		return ios.DeviceEntry{}, coded("rsd_discovery_failed", "RSD handshake failed on the current tunnel", err)
+	}
+	if rsd.Udid != base.Properties.SerialNumber {
+		return ios.DeviceEntry{}, coded("rsd_identity_mismatch", "RSD identity differs from the configured device", nil)
+	}
+	device := base
+	device.Address = address
+	device.Rsd = rsd
+	return device, nil
+}
+
+func (s *Session) captureDevice(ctx context.Context) (ios.DeviceEntry, error) {
+	return discoverDevice(ctx, s.device, s.tunnel.Address, s.tunnel.RsdPort)
 }
 
 func (s *Session) Close() error {

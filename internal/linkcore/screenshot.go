@@ -19,13 +19,14 @@ const maxScreenshotPixels = 16 << 20
 // Screenshot opens an inner developer service on the already verified session.
 // It never creates, closes or re-pairs the outer RemotePairing tunnel.
 func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
+	device, err := s.captureDevice(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if s.device.Rsd.GetPort("com.apple.instruments.dtservicehub") == 0 {
+	if device.Rsd.GetPort("com.apple.instruments.dtservicehub") == 0 {
 		return nil, coded("capture_service_unavailable", "the active device does not advertise the Instruments developer service", nil)
 	}
-	service, err := instruments.NewScreenshotService(s.device)
+	service, err := instruments.NewScreenshotService(device)
 	if err != nil {
 		return nil, coded("capture_service_unavailable", "could not open the screenshot service on the current tunnel", err)
 	}

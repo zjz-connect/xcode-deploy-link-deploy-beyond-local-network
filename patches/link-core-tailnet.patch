@@ -632,9 +632,13 @@ index 0000000..16f973f
 +	}
 +}
 diff --git a/ios/rsd.go b/ios/rsd.go
-index 5c9e301..9486af4 100644
+index 5c9e301..5485233 100644
 --- a/ios/rsd.go
 +++ b/ios/rsd.go
+@@ -3,0 +4 @@ import (
++	"context"
+@@ -7 +7,0 @@ import (
+-	"net"
 @@ -94 +94 @@ func RsdCheckin(rw io.ReadWriter) error {
 -		"Label":           "go-ios",
 +		"Label":           "Link Core",
@@ -653,16 +657,43 @@ index 5c9e301..9486af4 100644
 +	if s, ok := r.Services[shim]; ok {
 +		return int(s.Port)
 +	}
-@@ -211,0 +220,4 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
+@@ -170 +178 @@ func NewWithAddrPort(addr string, port int) (RsdService, error) {
+-	return newRsdServiceFromTcpConn(conn)
++	return newRsdServiceFromConn(conn)
+@@ -184 +192 @@ func NewWithAddrPortDevice(addr string, port int, d DeviceEntry) (RsdService, er
+-	return newRsdServiceFromTcpConn(conn)
++	return newRsdServiceFromConn(conn)
+@@ -187 +195,11 @@ func NewWithAddrPortDevice(addr string, port int, d DeviceEntry) (RsdService, er
+-func newRsdServiceFromTcpConn(conn *net.TCPConn) (RsdService, error) {
++// NewWithAddrPortDeviceContext binds dialing, HTTP2/XPC startup and RSD reads
++// to ctx. Cancellation closes only this service socket, not its parent tunnel.
++func NewWithAddrPortDeviceContext(ctx context.Context, addr string, port int, d DeviceEntry) (RsdService, error) {
++	conn, err := ConnectTUNDeviceContext(ctx, addr, port, d)
++	if err != nil {
++		return RsdService{}, fmt.Errorf("NewWithAddrPortDeviceContext: failed to connect: %w", err)
++	}
++	return newRsdServiceFromConn(conn)
++}
++
++func newRsdServiceFromConn(conn io.ReadWriteCloser) (RsdService, error) {
+@@ -190 +208,2 @@ func newRsdServiceFromTcpConn(conn *net.TCPConn) (RsdService, error) {
+-		return RsdService{}, fmt.Errorf("newRsdServiceFromTcpConn: failed to connect to http2: %w", err)
++		_ = conn.Close()
++		return RsdService{}, fmt.Errorf("newRsdServiceFromConn: failed to connect to http2: %w", err)
+@@ -195 +214,2 @@ func newRsdServiceFromTcpConn(conn *net.TCPConn) (RsdService, error) {
+-		return RsdService{}, fmt.Errorf("newRsdServiceFromTcpConn: failed to create xpc connection: %w", err)
++		_ = h.Close()
++		return RsdService{}, fmt.Errorf("newRsdServiceFromConn: failed to create xpc connection: %w", err)
+@@ -211,0 +232,4 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
 +	return parseRsdHandshakeResponse(m)
 +}
 +
 +func parseRsdHandshakeResponse(m map[string]interface{}) (RsdHandshakeResponse, error) {
-@@ -212,0 +225 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
+@@ -212,0 +237 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
 +	osVersion := ""
-@@ -213,0 +227 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
+@@ -213,0 +239 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
 +		osVersion, _ = properties["OSVersion"].(string)
-@@ -235,2 +249,3 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
+@@ -235,2 +261,3 @@ func (s RsdService) Handshake() (RsdHandshakeResponse, error) {
 -			Services: res,
 -			Udid:     udid,
 +			Services:  res,
