@@ -17,6 +17,7 @@ import (
 )
 
 type TestRunRequest struct {
+	CaptureBindAddress  string   `json:"capture_bind_address,omitempty"`
 	AppID               string   `json:"app_id"`
 	RunnerID            string   `json:"runner_id"`
 	TestBundle          string   `json:"test_bundle"`
@@ -49,6 +50,9 @@ func validateTestRun(r *TestRunRequest) error {
 	if len(r.Tests) == 0 || len(r.Tests) > 256 || r.TimeoutSeconds < 30 || r.TimeoutSeconds > 1800 {
 		return coded("test_request_invalid", "select 1–256 test methods and a timeout of 30–1800 seconds", nil)
 	}
+	if r.CaptureBindAddress != "" && !validCaptureBindAddress(r.CaptureBindAddress) {
+		return coded("test_request_invalid", "capture bind address must be a local Tailscale IP", nil)
+	}
 	seen := make(map[string]bool)
 	for _, selector := range r.Tests {
 		if !testSelector.MatchString(selector) || seen[selector] {
@@ -80,11 +84,25 @@ func (s *Session) RunTests(ctx context.Context, request TestRunRequest, log io.W
 			return nil, coded("test_service_unavailable", "the active device does not advertise "+service, nil)
 		}
 	}
+	var environment map[string]any
+	if request.CaptureBindAddress != "" {
+		reader, closeReader, err := s.openScreenshotReader(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer closeReader()
+		bridge, err := startCaptureBridge(ctx, request.CaptureBindAddress, reader)
+		if err != nil {
+			return nil, err
+		}
+		defer bridge.Close()
+		environment = map[string]any{"LYO_SWIFT_CAPTURE_URL": bridge.URL, "LYO_SWIFT_CAPTURE_TOKEN": bridge.Token}
+	}
 	listener := testmanagerd.NewTestListener(log, log, attachments)
 	suites, err := testmanagerd.RunTestWithConfig(ctx, testmanagerd.TestConfig{
 		BundleId: request.AppID, TestRunnerBundleId: request.RunnerID,
 		XctestConfigName: request.TestBundle, TestsToRun: request.Tests,
-		Device: device, Listener: listener,
+		Device: device, Listener: listener, Env: environment,
 	})
 	if ctx.Err() != nil {
 		return suites, ctx.Err()

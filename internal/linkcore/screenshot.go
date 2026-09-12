@@ -19,28 +19,44 @@ const maxScreenshotPixels = 16 << 20
 // Screenshot opens an inner developer service on the already verified session.
 // It never creates, closes or re-pairs the outer RemotePairing tunnel.
 func (s *Session) Screenshot(ctx context.Context) ([]byte, error) {
-	device, err := s.captureDevice(ctx)
+	reader, closeReader, err := s.openScreenshotReader(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer closeReader()
+	return reader(ctx)
+}
+
+// Open once for a bounded owner run, using a separate Instruments service from
+// the testmanagerd input channel. The authenticated outer session is unchanged.
+func (s *Session) openScreenshotReader(ctx context.Context) (func(context.Context) ([]byte, error), func(), error) {
+	device, err := s.captureDevice(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	if device.Rsd.GetPort("com.apple.instruments.dtservicehub") == 0 {
-		return nil, coded("capture_service_unavailable", "the active device does not advertise the Instruments developer service", nil)
+		return nil, nil, coded("capture_service_unavailable", "the active device does not advertise the Instruments developer service", nil)
 	}
 	service, err := instruments.NewScreenshotService(device)
 	if err != nil {
-		return nil, coded("capture_service_unavailable", "could not open the screenshot service on the current tunnel", err)
+		return nil, nil, coded("capture_service_unavailable", "could not open the screenshot service on the current tunnel", err)
 	}
 	closeService := sync.OnceFunc(service.Close)
-	stop := context.AfterFunc(ctx, closeService)
-	defer func() { stop(); closeService() }()
-	data, err := service.TakeScreenshot()
-	if ctx.Err() != nil {
-		return nil, coded("capture_timeout", "screenshot request was cancelled or timed out", ctx.Err())
+	ownerStop := context.AfterFunc(ctx, closeService)
+	closeReader := func() { ownerStop(); closeService() }
+	reader := func(requestCtx context.Context) ([]byte, error) {
+		stop := context.AfterFunc(requestCtx, closeService)
+		defer stop()
+		data, err := service.TakeScreenshot()
+		if requestCtx.Err() != nil {
+			return nil, coded("capture_timeout", "screenshot request was cancelled or timed out", requestCtx.Err())
+		}
+		if err != nil {
+			return nil, coded("capture_failed", "the device screenshot request failed", err)
+		}
+		return data, nil
 	}
-	if err != nil {
-		return nil, coded("capture_failed", "the device screenshot request failed", err)
-	}
-	return data, nil
+	return reader, closeReader, nil
 }
 
 func (d *Daemon) screenshot(ctx context.Context) (Response, error) {

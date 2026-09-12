@@ -27,6 +27,7 @@ func runTests(arguments []string) error {
 	bundle := flags.String("test-bundle", "", "embedded test bundle filename ending in .xctest")
 	output := flags.String("output", "", "new directory for results and full-frame PNG attachments")
 	timeout := flags.Duration("timeout", 5*time.Minute, "test timeout (30s to 30m)")
+	captureBind := flags.String("capture-bind-address", "", "local Tailscale address for screenshot-only requests during native input")
 	var tests, attachments repeatedStrings
 	flags.Var(&tests, "test", "selected Class/testMethod; repeat for multiple methods")
 	flags.Var(&attachments, "require-attachment", "required named PNG; repeat for multiple states")
@@ -54,6 +55,6 @@ func runTests(arguments []string) error {
 	defer cancel()
 	return linkcore.Call(ctx, *profile, linkcore.Request{Command: "run-tests", TestRun: &linkcore.TestRunRequest{
 		AppID: *app, RunnerID: *runner, TestBundle: *bundle, Tests: tests, RequiredAttachments: attachments,
-		OutputDirectory: absolute, TimeoutSeconds: int(*timeout / time.Second),
+		OutputDirectory: absolute, TimeoutSeconds: int(*timeout / time.Second), CaptureBindAddress: *captureBind,
 	}}, func(response linkcore.Response) { emit(response) })
 }

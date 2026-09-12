@@ -366,3 +366,5 @@ attachments and explicit completion checks over the existing Tailnet session.
 It does not depend on an Xcode Run Destination. See
 [Remote Capture](docs/remote-capture.md) revision 1.2.0-design.6 for the command,
 network boundary and separately recorded physical acceptance.
+
+The prepared `1.2.0-capture-preview.8` candidate supports a screenshot-only endpoint during `run-tests --capture-bind-address TAILNET_IP`, allowing native in-flight XCTest captures without blocking screenshots behind the gesture. It is not activated by building or testing. See [Remote Capture](docs/remote-capture.md) for its scope and image verification.

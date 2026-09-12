@@ -1,8 +1,8 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.7
-Candidate version: 1.2.0-capture-preview.7
-Status: preview 7 discovery fix built and active; physical XCTest collection awaits an unlocked, prepared device
+Document revision: 1.2.0-design.8
+Candidate version: 1.2.0-capture-preview.8
+Status: preview 8 preparation only; do not install, restart or change the active preview 7 tunnel during this preparation task
 
 ## Scope and transport
 
@@ -180,3 +180,13 @@ screen was off, so it is only transport evidence, never an accepted handbook
 capture. Current native XCTest readiness is verified separately from that call.
 Earlier preview 6 cellular interaction evidence above remains historical, not a
 claim that this new build has completed the pending image replacement queue.
+
+## In-flight originals during native XCTest input
+
+XCUIScreen and XCUIElement APIs are MainActor-isolated. A blocking press/drag cannot concurrently take an XCTest screenshot on that actor. Do not bypass actor isolation or label a settled endpoint as an in-flight state.
+
+An explicitly requested run-tests --capture-bind-address TAILNET_IP creates a short-lived screenshot-only HTTP endpoint bound exclusively to that local Tailscale address and an ephemeral port. A fresh random bearer token and URL are passed only to the signed test runner environment. No listener exists outside that run, no token is logged, and HTTP traffic is carried within the existing encrypted tailnet. Requests must have the token, exact method/path, no request body and no competing screenshot. Timeouts, image size/format validation and run-context cancellation bound the operation.
+
+The endpoint borrows the already owned Session during RunTests and opens a separate native Instruments screenshot service. XCTest retains exclusive control of input. There is no WDA, extra pairing, unrestricted phone control, lock bypass for unrelated operations or tunnel restart. Original PNG response bytes are returned unchanged; no scaling or encoding occurs.
+
+The test runner starts its asynchronous request while the main actor performs the real gesture. It brackets the complete request/response in the iPhone monotonic clock and compares that interval against actual application callbacks after the gesture. It attaches the original only if the entire interval is inside the native active phase. A late screenshot fails the state; it never becomes a substitute static frame. The collector keeps normal XCTest test/attachment ownership validation.
