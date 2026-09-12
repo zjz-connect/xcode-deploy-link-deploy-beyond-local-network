@@ -1,6 +1,6 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.8
+Document revision: 1.2.0-design.8 revision 2
 Candidate version: 1.2.0-capture-preview.8
 Status: preview 8 preparation only; do not install, restart or change the active preview 7 tunnel during this preparation task
 
@@ -190,3 +190,8 @@ An explicitly requested run-tests --capture-bind-address TAILNET_IP creates a sh
 The endpoint borrows the already owned Session during RunTests and opens a separate native Instruments screenshot service. XCTest retains exclusive control of input. There is no WDA, extra pairing, unrestricted phone control, lock bypass for unrelated operations or tunnel restart. Original PNG response bytes are returned unchanged; no scaling or encoding occurs.
 
 The test runner starts its asynchronous request while the main actor performs the real gesture. It brackets the complete request/response in the iPhone monotonic clock and compares that interval against actual application callbacks after the gesture. It attaches the original only if the entire interval is inside the native active phase. A late screenshot fails the state; it never becomes a substitute static frame. The collector keeps normal XCTest test/attachment ownership validation.
+
+Cancellation closes the run-scoped bridge idempotently. The cancellation hook
+has no mutable unregister callback, so cancellation concurrent with creation or
+explicit Close cannot race on partially initialized hook state. The owner run
+always cancels its context on return; no endpoint survives the run.

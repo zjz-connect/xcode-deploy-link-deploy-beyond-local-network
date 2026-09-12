@@ -5,11 +5,44 @@ import (
 	"context"
 	"image"
 	"image/png"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
+
+type bridgeCloseListener struct {
+	net.Listener
+	closes atomic.Int32
+}
+
+func (l *bridgeCloseListener) Close() error { l.closes.Add(1); return nil }
+
+func TestCaptureBridgeCloseAndCancellationAreIdempotent(t *testing.T) {
+	for attempt := 0; attempt < 100; attempt++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		listener := &bridgeCloseListener{}
+		bridge := &captureBridge{server: &http.Server{}, listener: listener}
+		done := make(chan struct{})
+		if attempt%2 == 0 {
+			cancel()
+		}
+		context.AfterFunc(ctx, func() { bridge.Close(); close(done) })
+		var workers sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			workers.Add(1)
+			go func() { defer workers.Done(); bridge.Close(); cancel() }()
+		}
+		workers.Wait()
+		cancel()
+		<-done
+		if listener.closes.Load() != 1 {
+			t.Fatal("listener must close exactly once across cancellation and explicit shutdown")
+		}
+	}
+}
 
 func bridgeRequest(handler http.Handler, token, method, path string, body []byte) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))

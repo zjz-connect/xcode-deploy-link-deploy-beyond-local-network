@@ -20,7 +20,6 @@ type captureBridge struct {
 	Token     string
 	server    *http.Server
 	listener  net.Listener
-	stop      func() bool
 	closeOnce sync.Once
 }
 
@@ -45,16 +44,13 @@ func startCaptureBridge(ctx context.Context, address string, take func(context.C
 	token := base64.RawURLEncoding.EncodeToString(secret)
 	bridge := &captureBridge{URL: "http://" + listener.Addr().String() + "/screenshot", Token: token, listener: listener}
 	bridge.server = &http.Server{Handler: captureBridgeHandler(ctx, token, take), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 3 * time.Second, MaxHeaderBytes: 4096, BaseContext: func(net.Listener) context.Context { return ctx }}
-	bridge.stop = context.AfterFunc(ctx, bridge.Close)
+	context.AfterFunc(ctx, bridge.Close)
 	go func() { _ = bridge.server.Serve(listener) }()
 	return bridge, nil
 }
 
 func (b *captureBridge) Close() {
 	b.closeOnce.Do(func() {
-		if b.stop != nil {
-			b.stop()
-		}
 		_ = b.server.Close()
 		_ = b.listener.Close()
 	})
