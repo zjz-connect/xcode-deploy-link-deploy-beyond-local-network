@@ -1,6 +1,6 @@
 # iOS OTA Architecture
 
-Document revision: `1.3.0-design.3`
+Document revision: `1.3.1-design.1`
 
 Revised: `2026-09-12`
 
@@ -19,9 +19,12 @@ install/remove apps, read files, or invoke arbitrary developer services.
 
 ## iOS OTA location extension and naming
 
-The canonical service name becomes iOS OTA, with technical slug `ios-ota`.
-Runtime root, binary, LaunchAgent and environment prefix follow this identity.
-Link Core retains its protocol-library identity and upstream provenance.
+The installed Mac service's canonical display name is **Lyo Nodus iOS OTA**,
+with technical slug `lyo-nodus-ios-ota`. Its executable, LaunchAgent label,
+plist basename and log basenames use that exact slug. The repository remains
+`ios-ota`; Link Core retains its upstream identity. The phone's separately
+persisted pairing name remains exactly **iOS OTA** and its identity is not
+rotated by this service release.
 
 The daemon owns one LocationSimulation connection using Link Core's existing
 Instruments API. It uses the same paired tunnel, with fresh RSD identity checks.
@@ -44,10 +47,31 @@ app acceptance or bypass of simulated-location detection is promised.
 
 The component name is also the runtime identity:
 
-- executable and process: `ios-ota`;
-- per-user LaunchAgent: `ios-ota`;
-- runtime root: `~/Library/Application Support/iOS OTA/`;
-- runtime-root override: `IOS_OTA_RUNTIME_ROOT`.
+- executable and process: `lyo-nodus-ios-ota`;
+- per-user LaunchAgent and plist basename: `lyo-nodus-ios-ota`;
+- default runtime root: `~/Library/Application Support/Lyo Nodus iOS OTA/`;
+- explicit runtime-root override: `LYO_NODUS_IOS_OTA_RUNTIME_ROOT`;
+- native background bundle: `Lyo Nodus iOS OTA.app`, containing that one
+  executable at `Contents/MacOS/lyo-nodus-ios-ota`;
+- bundle identifier: `lyo.nodus.ios.ota`, the slug's hyphens replaced by dots.
+
+The bundle supplies `CFBundleName` and `CFBundleDisplayName`; the LaunchAgent
+uses Apple's `AssociatedBundleIdentifiers` key to associate it with the same
+bundle in Login Items. There is no invented LaunchAgent `DisplayName` key,
+wrapper process, second daemon or helper UI. The installer signs and registers
+the bundle but does not activate the service. `RunAtLoad` and `KeepAlive` start
+the job at bootstrap; no subsequent force-kickstart restarts it a second time.
+
+Activation is a single service release: first verify the installed identity,
+current source ownership, no in-progress install/capture/location operation,
+and a reachable Wi-Fi RemotePairing listener. Build and test first, unload the
+exact old `ios-ota` job, activate `lyo-nodus-ios-ota`, then remove only the
+superseded plist and executable after the new job is authenticated. Preserve
+profile/socket paths, phone pairing, location certificate/token and the Core
+process. An existing explicitly selected runtime/build root may be reused;
+do not duplicate its dependency cache merely to rename a service. No old-name
+alias or compatibility job remains. Record actual paths and both old/new
+installed versions in release acceptance.
 
 The superseded executable and LaunchAgent are removed at activation. There is
 no command alias or parallel daemon. Profiles are explicit owner-selected
@@ -129,7 +153,8 @@ causes iOS to expose RemotePairing again.
 The installer verifies the Go archive checksum, verifies the exact upstream
 commit, and fails if the patch no longer applies cleanly. Generated dependency
 source, caches, profiles, pairing records, logs, and binaries remain outside
-Git under `~/Library/Application Support/iOS OTA/`.
+Git under the selected runtime root. Existing protected profile and credential
+locations are explicit configuration paths, not naming aliases.
 
 ## Security invariants
 

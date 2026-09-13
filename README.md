@@ -1,5 +1,8 @@
 # iOS OTA
 
+Mac background service: **Lyo Nodus iOS OTA** (`lyo-nodus-ios-ota`).
+The iPhone pairing entry remains exactly **iOS OTA**.
+
 [English](#english) · [中文](#中文)
 
 ## English
@@ -114,10 +117,13 @@ The deterministic installer downloads the pinned Go toolchain and pinned Link
 Core source, applies the repository patch, and installs the binary under:
 
 ```text
-~/Library/Application Support/iOS OTA/bin/ios-ota
+~/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota
 ```
 
-It does not install Go globally.
+It does not install Go globally. The signed background bundle supplies the
+macOS display name; the LaunchAgent is `lyo-nodus-ios-ota.plist`. There is only
+one daemon executable. `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` selects an explicit
+existing runtime/build root when required; profiles and credentials stay put.
 
 ### 3. Configure and start the bridge
 
@@ -126,8 +132,8 @@ below with the RemotePairing identifier, the iPhone's Tailscale IP, and the
 absolute path to its pairing record:
 
 ```sh
-ios_ota="$HOME/Library/Application Support/iOS OTA/bin/ios-ota"
-profile="$HOME/Library/Application Support/iOS OTA/iphone.json"
+ios_ota="$HOME/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota"
+profile="$HOME/Library/Application Support/Lyo Nodus iOS OTA/iphone.json"
 
 "$ios_ota" configure \
   --profile "$profile" \
@@ -296,10 +302,13 @@ cd ios-ota
 patch，并将二进制文件安装到：
 
 ```text
-~/Library/Application Support/iOS OTA/bin/ios-ota
+~/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota
 ```
 
-它不会在系统中全局安装 Go。
+它不会在系统中全局安装 Go。macOS 后台项目显示 **Lyo Nodus iOS OTA**，
+LaunchAgent 为 `lyo-nodus-ios-ota.plist`；应用包只包含同一个后台进程，
+不额外创建服务。可用 `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` 明确复用已有
+runtime/build 目录；不迁移现有 profile、配对或定位凭证。
 
 ### 3. 配置并启动 bridge
 
@@ -307,8 +316,8 @@ patch，并将二进制文件安装到：
 identifier、iPhone 的 Tailscale IP，以及 pairing record 的绝对路径：
 
 ```sh
-ios_ota="$HOME/Library/Application Support/iOS OTA/bin/ios-ota"
-profile="$HOME/Library/Application Support/iOS OTA/iphone.json"
+ios_ota="$HOME/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota"
+profile="$HOME/Library/Application Support/Lyo Nodus iOS OTA/iphone.json"
 
 "$ios_ota" configure \
   --profile "$profile" \
