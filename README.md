@@ -50,13 +50,45 @@ signed .app -> iOS OTA CLI -> owner-only Unix socket
 
 ### 1. Bootstrap the pairing identity
 
-If you already have an owner-only `pymobiledevice3` RemotePairing record, reuse
-it. Otherwise, connect the trusted iPhone over USB once and follow the
-[`pymobiledevice3` iOS 17+ tunnel guide](https://github.com/doronz88/pymobiledevice3/blob/master/docs/guides/ios17-tunnels.md) to install that tool, then create the record:
+Reuse an existing trusted, owner-only RemotePairing record. Only when creating
+or explicitly replacing the component pairing, use an isolated environment with
+`pymobiledevice3 11.12.4` and its upstream device-initiated pairing API. Keep the
+phone unlocked on the same LAN for this bootstrap. Preserve the normal Xcode
+pairing; the component must have its own identity and the exact name **iOS OTA**.
 
 ```sh
-python3 -m pymobiledevice3 lockdown remotepairing --udid <iphone-udid> --pair
+python3 - <<'PY'
+import asyncio, os, subprocess, uuid
+from pymobiledevice3.remote.tunnel_service import PairableHostInfo, serve_pairable_host
+
+os.umask(0o077)
+async def main():
+    info = PairableHostInfo(
+        name="iOS OTA",
+        model=subprocess.check_output(["sysctl", "-n", "hw.model"], text=True).strip(),
+        identifier=str(uuid.uuid4()).upper(),
+    )
+    print("Select iOS OTA in the iPhone's Paired Macs settings.", flush=True)
+    result = await serve_pairable_host(
+        info, timeout=240,
+        pin_callback=lambda pin: print("Pairing code:", pin, flush=True),
+    )
+    print("Phone:", result.peer_device.name, result.peer_device.udid)
+    print("Record:", result.record_path)
+asyncio.run(main())
+PY
 ```
+
+Select **iOS OTA** on the intended phone and enter the short-lived code. Confirm
+the returned device identity before using its record. Do not retain the code.
+The API persists the new identity and keys together; subsequent daemon
+connections reuse them. Do not run this command for normal reconnection.
+
+`remote pair-host --name` alone still uses a hostname-derived identity in this
+upstream release. It can collide with a previous component pairing under a
+different name. Host-initiated `lockdown remotepairing --pair` also emits a
+three-field record without the paired `host_identifier` and `host_alt_irk`
+required by this reader. Do not invent those fields or reset all device trust.
 
 The record is normally written under `~/.pymobiledevice3/`. It contains private
 key material and must remain readable only by its owner. iOS OTA
@@ -65,7 +97,9 @@ reads it in place and never copies it into the repository or profile.
 The rename to iOS OTA does not itself invalidate pairing. If `status` reports
 `pair_verify_failed`, restore trusted phone connectivity and repeat the bootstrap
 for that iPhone. `doctor` checks local prerequisites, not successful pair
-verification. Preserve an existing profile, its adjacent socket and any location
+verification. Acceptance requires **iOS OTA** to remain in the phone's paired
+list and the daemon to remain `active` after the bootstrap exits, not only a
+success receipt or momentary connection. Preserve an existing profile, its adjacent socket and any location
 configuration; do not recreate the profile just to change its directory name.
 
 ### 2. Install the bridge
@@ -230,21 +264,24 @@ Xcode 构建和签名
 
 ### 1. 首次建立配对身份
 
-如果已有仅限当前用户访问的 `pymobiledevice3` RemotePairing record，可以直接
-复用。否则先通过 USB 连接并信任 iPhone，按照
-[`pymobiledevice3` 的 iOS 17+ tunnel 指南](https://github.com/doronz88/pymobiledevice3/blob/master/docs/guides/ios17-tunnels.md)
-安装该工具，然后生成 record：
+如果已有可信且仅限当前用户访问的 RemotePairing record，直接复用。
+只有首次创建或明确重建组件配对时，才执行上方英文第 1 节的 upstream API
+命令：在隔离环境使用 `pymobiledevice3 11.12.4`，广播名称为 **iOS OTA**，
+并创建独立的组件身份。手机保持解锁、与 Mac 在同一局域网，在已配对 Mac
+设置中选择 **iOS OTA** 并输入临时验证码。保留原有 **MacBook Air** Xcode
+配对，正常重连不重新生成身份，不重置全部信任。
 
-```sh
-python3 -m pymobiledevice3 lockdown remotepairing --udid <iphone-udid> --pair
-```
+仅设置 `pair-host --name` 仍会复用由主机名推导的身份，不等于独立配对。
+host-initiated 路径输出的三字段 record 也不满足当前 reader 契约；不要伪造
+缺失的身份或密钥字段。核对命令返回的手机身份，验证码不要保存。
 
 record 通常位于 `~/.pymobiledevice3/`。其中包含私钥，只能由当前用户读取。
 iOS OTA 会在原路径读取它，不会将其复制到仓库或 profile。
 
 更名本身不会使配对失效。如果 `status` 返回 `pair_verify_failed`，先恢复
 可信的手机连接，再对该 iPhone 重做上述配对。`doctor` 通过只代表前置检查
-通过，不代表配对认证成功。现有 profile、相邻 socket 和 location 配置保留
+通过，不代表配对认证成功。需确认配对程序退出后，手机已配对列表保留
+**iOS OTA**，且 daemon 持续 `active`；短暂连上不算验收。现有 profile、相邻 socket 和 location 配置保留
 原位，不要仅为更改目录名而重新运行 `configure`。
 
 ### 2. 安装 bridge

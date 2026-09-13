@@ -1,6 +1,6 @@
 # iOS OTA Architecture
 
-Document revision: `1.3.0-design.2`
+Document revision: `1.3.0-design.3`
 
 Revised: `2026-09-12`
 
@@ -57,10 +57,15 @@ consumers already monitor its socket. This is one configured socket, not an alia
 
 Renaming the service does not rotate its RemotePairing identity. A local record
 passing validation and an open listener are prerequisites, not authentication
-proof. On `pair_verify_failed`, use trusted lockdown bootstrap for the explicitly
-selected iPhone, preserve its configured profile and location credentials, and
-verify a new authenticated active session. Pairing, Xcode reachability,
-installation readback and capture acceptance remain separate observations.
+proof. On `pair_verify_failed`, use the explicitly authorized device-initiated
+bootstrap documented in README. The exact component name is **iOS OTA** and its
+host identifier is independent of the Mac hostname and Xcode pairing. The
+upstream exchange persists that identifier, IRK and keypair together; normal
+acquisition reuses the record without changing identity. Preserve the selected
+phone's configured profile and location credentials. Pairing acceptance requires
+the phone to retain the component in its paired list and an authenticated active
+session to survive bootstrap exit. Pairing, Xcode reachability, installation
+readback and capture acceptance remain separate observations.
 
 ## Build and install ownership
 
