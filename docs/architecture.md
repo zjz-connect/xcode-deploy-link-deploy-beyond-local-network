@@ -1,6 +1,6 @@
 # iOS OTA Architecture
 
-Document revision: `1.3.0-design.1`
+Document revision: `1.3.0-design.2`
 
 Revised: `2026-09-12`
 
@@ -54,6 +54,13 @@ no command alias or parallel daemon. Profiles are explicit owner-selected
 absolute paths; their adjacent control socket is independent of the binary
 installation directory. Reuse an existing profile in place when other local
 consumers already monitor its socket. This is one configured socket, not an alias.
+
+Renaming the service does not rotate its RemotePairing identity. A local record
+passing validation and an open listener are prerequisites, not authentication
+proof. On `pair_verify_failed`, use trusted lockdown bootstrap for the explicitly
+selected iPhone, preserve its configured profile and location credentials, and
+verify a new authenticated active session. Pairing, Xcode reachability,
+installation readback and capture acceptance remain separate observations.
 
 ## Build and install ownership
 

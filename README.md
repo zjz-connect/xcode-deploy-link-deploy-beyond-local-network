@@ -55,12 +55,18 @@ it. Otherwise, connect the trusted iPhone over USB once and follow the
 [`pymobiledevice3` iOS 17+ tunnel guide](https://github.com/doronz88/pymobiledevice3/blob/master/docs/guides/ios17-tunnels.md) to install that tool, then create the record:
 
 ```sh
-python3 -m pymobiledevice3 lockdown remotepairing --pair
+python3 -m pymobiledevice3 lockdown remotepairing --udid <iphone-udid> --pair
 ```
 
 The record is normally written under `~/.pymobiledevice3/`. It contains private
 key material and must remain readable only by its owner. iOS OTA
 reads it in place and never copies it into the repository or profile.
+
+The rename to iOS OTA does not itself invalidate pairing. If `status` reports
+`pair_verify_failed`, restore trusted phone connectivity and repeat the bootstrap
+for that iPhone. `doctor` checks local prerequisites, not successful pair
+verification. Preserve an existing profile, its adjacent socket and any location
+configuration; do not recreate the profile just to change its directory name.
 
 ### 2. Install the bridge
 
@@ -187,8 +193,8 @@ iOS OTA 用于在局域网之外安装由 Xcode 构建的 App。它通过 Tailsc
 签名的 iOS App，可以在已配对的 iPhone 从 Wi-Fi 切换到 5G 后继续安装。
 
 > [!IMPORTANT]
-> 必须先建立 iOS OTA bridge。Xcode 负责构建和签名，Nodus
-> Remote Deploy 再通过 bridge 安装 Xcode 生成的 `.app`。本项目不会让 iPhone
+> 必须先建立 iOS OTA bridge。Xcode 负责构建和签名，iOS OTA
+> 再通过 bridge 安装 Xcode 生成的 `.app`。本项目不会让 iPhone
 > 变成 Xcode 原生的远程 Run Destination。
 
 ```text
@@ -230,11 +236,16 @@ Xcode 构建和签名
 安装该工具，然后生成 record：
 
 ```sh
-python3 -m pymobiledevice3 lockdown remotepairing --pair
+python3 -m pymobiledevice3 lockdown remotepairing --udid <iphone-udid> --pair
 ```
 
 record 通常位于 `~/.pymobiledevice3/`。其中包含私钥，只能由当前用户读取。
 iOS OTA 会在原路径读取它，不会将其复制到仓库或 profile。
+
+更名本身不会使配对失效。如果 `status` 返回 `pair_verify_failed`，先恢复
+可信的手机连接，再对该 iPhone 重做上述配对。`doctor` 通过只代表前置检查
+通过，不代表配对认证成功。现有 profile、相邻 socket 和 location 配置保留
+原位，不要仅为更改目录名而重新运行 `configure`。
 
 ### 2. 安装 bridge
 
@@ -338,8 +349,8 @@ InstallationProxy 从 iPhone 回读到该 bundle 后，命令才会报告成功�
 ./scripts/test.sh
 ```
 
-测试入口会验证固定的下游 patch、受影响的 Link Core package、Nodus Remote
-Deploy 单元测试、race test 和 `go vet`。所有权与失败边界见
+测试入口会验证固定的下游 patch、受影响的 Link Core package、iOS OTA
+单元测试、race test 和 `go vet`。所有权与失败边界见
 [`docs/architecture.md`](docs/architecture.md)。
 
 iOS OTA 使用 [MIT License](LICENSE) 发布。Link Core 衍生自

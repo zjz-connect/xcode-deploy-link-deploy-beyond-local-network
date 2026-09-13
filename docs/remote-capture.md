@@ -1,18 +1,23 @@
 # Remote Capture
 
-Document revision: 1.2.0-design.8 revision 2
-Candidate version: 1.2.0-capture-preview.8
-Status: preview 8 preparation only; do not install, restart or change the active preview 7 tunnel during this preparation task
+Document revision: 1.3.0-guide.1
+Revised: 2026-09-12
+Status: current iOS OTA capture contract
+
+The earlier preview preparation restriction is superseded by the activation
+record in [Architecture](architecture.md#ios-ota-130-location-acceptance-2026-09-12).
+Historical preview evidence below retains the service names and versions used
+at each checkpoint; it is not an instruction to restore an older daemon.
 
 ## Scope and transport
 
-Deploy Link uses the pinned Link Core dependency on its existing authenticated
+iOS OTA uses the pinned Link Core dependency on its existing authenticated
 Tailnet userspace tunnel. Screenshot, testmanagerd, CoreDevice appservice and
 openstdio receive the same verified DeviceEntry as installation. Device OS
 version comes from the authenticated RSD handshake. Remote test execution does
 not consult Xcode destinations or local usbmuxd. WebDriverAgent is not used.
 
-Xcode builds and signs the app and its native XCTest runner. Deploy Link installs
+Xcode builds and signs the app and its native XCTest runner. iOS OTA installs
 both bundles, then executes explicitly selected UI test methods. Tap and swipe
 are real XCTest events in that signed runner. This is a capture workflow, not a
 persistent general-purpose phone control server.
