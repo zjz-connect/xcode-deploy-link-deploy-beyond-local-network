@@ -12,7 +12,7 @@ link_core_commit="$(awk -F '\"' '/^const PinnedLinkCoreCommit = / { print $2 }' 
 [[ "${link_core_commit}" =~ ^[0-9a-f]{40}$ ]] || { printf 'Invalid pinned Link Core commit\n' >&2; exit 1; }
 patch_path="${module_directory}/patches/link-core-tailnet.patch"
 : "${HOME:?HOME must be set}"
-runtime_root="${IOS_OTA_RUNTIME_ROOT:-${HOME}/Library/Application Support/iOS OTA}"
+runtime_root="${LYO_NODUS_IOS_OTA_RUNTIME_ROOT:-${HOME}/Library/Application Support/Lyo Nodus iOS OTA}"
 build_root="${runtime_root}/build"
 downloads_directory="${build_root}/downloads"
 toolchains_directory="${build_root}/toolchains"
@@ -22,7 +22,7 @@ output_root="${module_directory}/.build"
 binary_directory="${output_root}"
 
 fail() {
-  printf 'iOS OTA build failed: %s\n' "$1" >&2
+  printf 'Lyo Nodus iOS OTA build failed: %s\n' "$1" >&2
   exit 1
 }
 
@@ -115,7 +115,7 @@ mkdir "${workspace_stage}"
 )
 mv -f "${workspace_stage}/go.work" "${workspace_file}"
 
-staged_binary="${staging_root}/ios-ota"
+staged_binary="${staging_root}/lyo-nodus-ios-ota"
 ldflags="-s -w -X main.patchSHA=${patch_sha256}"
 (
   cd "${module_directory}"
@@ -123,16 +123,16 @@ ldflags="-s -w -X main.patchSHA=${patch_sha256}"
     GOCACHE="${cache_directory}/go-build" \
     GOMODCACHE="${cache_directory}/go-mod" \
     "${go_binary}" build -buildvcs=false -trimpath -ldflags "${ldflags}" \
-      -o "${staged_binary}" ./cmd/ios-ota
+      -o "${staged_binary}" ./cmd/lyo-nodus-ios-ota
 )
 /usr/bin/codesign --force --sign - "${staged_binary}" >/dev/null
 chmod 0755 "${staged_binary}"
-mv -f "${staged_binary}" "${binary_directory}/ios-ota"
+mv -f "${staged_binary}" "${binary_directory}/lyo-nodus-ios-ota"
 
-"${binary_directory}/ios-ota" version
-printf 'Built %s\n' "${binary_directory}/ios-ota"
+"${binary_directory}/lyo-nodus-ios-ota" version
+printf 'Built %s\n' "${binary_directory}/lyo-nodus-ios-ota"
 
 # Generated only from local, shell-quoted build paths; consumed by test.sh.
 printf 'go_binary=%q\nsource_root=%q\nworkspace_file=%q\ncache_directory=%q\ncandidate_binary=%q\n' \
   "${go_binary}" "${source_root}" "${workspace_file}" "${cache_directory}" \
-  "${binary_directory}/ios-ota" > "${output_root}/build-env.sh"
+  "${binary_directory}/lyo-nodus-ios-ota" > "${output_root}/build-env.sh"

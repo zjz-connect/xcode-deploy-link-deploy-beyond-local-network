@@ -25,4 +25,4 @@ module_cache="${cache_directory}/go-mod"
 )
 
 "${candidate_binary}" version
-printf 'iOS OTA tests passed\n'
+printf 'Lyo Nodus iOS OTA tests passed\n'

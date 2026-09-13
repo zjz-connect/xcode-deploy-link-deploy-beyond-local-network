@@ -16,5 +16,5 @@ jobs:
       - uses: actions/checkout@v7
       - name: Verify iOS OTA
         env:
-          IOS_OTA_RUNTIME_ROOT: ${{ runner.temp }}/ios-ota-runtime
+          LYO_NODUS_IOS_OTA_RUNTIME_ROOT: ${{ runner.temp }}/lyo-nodus-ios-ota-runtime
         run: ./scripts/test.sh

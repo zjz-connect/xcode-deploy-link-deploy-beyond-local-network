@@ -253,7 +253,7 @@ func run(arguments []string) error {
 		}); err != nil {
 			return err
 		}
-		emit(map[string]any{"version": version, "link_core_commit": linkCoreCommit, "patch_sha256": patchSHA})
+		emit(map[string]any{"version": version, "serviceName": linkcore.ServiceName, "serviceLabel": linkcore.ServiceLabel, "link_core_commit": linkCoreCommit, "patch_sha256": patchSHA})
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q", arguments[0])

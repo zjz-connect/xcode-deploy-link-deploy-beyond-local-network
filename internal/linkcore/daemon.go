@@ -120,7 +120,7 @@ func (d *Daemon) establish(ctx context.Context) {
 		code := errorCode(err)
 		d.setState(StateWaiting, code)
 		if code != "remote_pairing_cold" {
-			slog.Warn("iOS OTA acquisition failed", "errorCode", code)
+			slog.Warn(ServiceName+" acquisition failed", "errorCode", code)
 		}
 		return
 	}
@@ -131,7 +131,7 @@ func (d *Daemon) establish(ctx context.Context) {
 	d.lastErrorCode = ""
 	generation := d.generation
 	d.mu.Unlock()
-	slog.Info("iOS OTA session active", "generation", generation)
+	slog.Info(ServiceName+" session active", "generation", generation)
 }
 
 func (d *Daemon) loseSession(generation uint64, err error) {
@@ -150,7 +150,7 @@ func (d *Daemon) loseSession(generation uint64, err error) {
 	if session != nil {
 		_ = session.Close()
 	}
-	slog.Warn("iOS OTA outer tunnel stopped", "generation", generation, "error", err)
+	slog.Warn(ServiceName+" outer tunnel stopped", "generation", generation, "error", err)
 }
 
 func waitContext(ctx context.Context, duration time.Duration) bool {
@@ -212,7 +212,7 @@ func (d *Daemon) install(ctx context.Context, appPath string, progress func(int,
 	cancel()
 	if err != nil {
 		d.setState(StateRecovering, "service_unresponsive")
-		slog.Warn("iOS OTA install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		slog.Warn(ServiceName+" install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
 		return err
 	}
 	d.mu.Lock()
@@ -236,7 +236,7 @@ func (d *Daemon) uninstall(ctx context.Context, bundleIdentifier string) error {
 	cancel()
 	if err != nil {
 		d.setState(StateRecovering, "service_unresponsive")
-		slog.Warn("iOS OTA uninstall service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		slog.Warn(ServiceName+" uninstall service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
 		return err
 	}
 	d.mu.Lock()
@@ -358,7 +358,7 @@ func (d *Daemon) Serve(parent context.Context) error {
 		<-ctx.Done()
 		_ = listener.Close()
 	}()
-	slog.Info("iOS OTA daemon listening")
+	slog.Info(ServiceName + " daemon listening")
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -373,7 +373,7 @@ func (d *Daemon) Serve(parent context.Context) error {
 	if d.location.snapshot(d.currentSession() != nil).Latitude != nil {
 		cleanup, end := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := d.location.clear(cleanup); err != nil {
-			slog.Warn("iOS OTA location clear was not acknowledged")
+			slog.Warn(ServiceName + " location clear was not acknowledged")
 		}
 		end()
 	}

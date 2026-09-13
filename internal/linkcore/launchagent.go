@@ -11,10 +11,11 @@ import (
 	"strconv"
 )
 
-const launchAgentLabel = "ios-ota"
+const ServiceName = "Lyo Nodus iOS OTA"
+const ServiceLabel = "lyo-nodus-ios-ota"
 
 func LaunchAgentPath() string {
-	return filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", launchAgentLabel+".plist")
+	return filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", ServiceLabel+".plist")
 }
 
 func xmlEscape(value string) string {
@@ -28,17 +29,14 @@ func launchTarget() string {
 }
 
 func launchServiceTarget() string {
-	return launchTarget() + "/" + launchAgentLabel
+	return launchTarget() + "/" + ServiceLabel
 }
 
-func InstallLaunchAgent(binaryPath string, profilePath string) error {
+func launchAgentContents(binaryPath string, profilePath string) ([]byte, error) {
 	if !filepath.IsAbs(binaryPath) || !filepath.IsAbs(profilePath) {
-		return coded("launch_agent_invalid", "binary and profile paths must be absolute", nil)
+		return nil, coded("launch_agent_invalid", "binary and profile paths must be absolute", nil)
 	}
 	logsDirectory := filepath.Join(filepath.Dir(profilePath), "logs")
-	if err := os.MkdirAll(logsDirectory, 0o700); err != nil {
-		return coded("launch_agent_failed", "could not create log directory", err)
-	}
 	contents := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -66,22 +64,31 @@ func InstallLaunchAgent(binaryPath string, profilePath string) error {
   <string>%s</string>
 </dict>
 </plist>
-`, launchAgentLabel, xmlEscape(binaryPath), xmlEscape(profilePath),
-		xmlEscape(filepath.Join(logsDirectory, "ios-ota.log")),
-		xmlEscape(filepath.Join(logsDirectory, "ios-ota.error.log")))
+`, ServiceLabel, xmlEscape(binaryPath), xmlEscape(profilePath),
+		xmlEscape(filepath.Join(logsDirectory, ServiceLabel+".log")),
+		xmlEscape(filepath.Join(logsDirectory, ServiceLabel+".error.log")))
+	return []byte(contents), nil
+}
+
+func InstallLaunchAgent(binaryPath string, profilePath string) error {
+	contents, err := launchAgentContents(binaryPath, profilePath)
+	if err != nil {
+		return err
+	}
+	logsDirectory := filepath.Join(filepath.Dir(profilePath), "logs")
+	if err := os.MkdirAll(logsDirectory, 0o700); err != nil {
+		return coded("launch_agent_failed", "could not create log directory", err)
+	}
 	path := LaunchAgentPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return coded("launch_agent_failed", "could not create LaunchAgents directory", err)
 	}
-	if err := writeAtomic(path, []byte(contents), 0o644); err != nil {
+	if err := writeAtomic(path, contents, 0o644); err != nil {
 		return coded("launch_agent_failed", "could not write LaunchAgent", err)
 	}
 	_ = exec.Command("/bin/launchctl", "bootout", launchServiceTarget()).Run()
 	if output, err := exec.Command("/bin/launchctl", "bootstrap", launchTarget(), path).CombinedOutput(); err != nil {
 		return coded("launch_agent_failed", fmt.Sprintf("launchctl bootstrap failed (%d diagnostic bytes)", len(output)), err)
-	}
-	if output, err := exec.Command("/bin/launchctl", "kickstart", "-k", launchServiceTarget()).CombinedOutput(); err != nil {
-		return coded("launch_agent_failed", fmt.Sprintf("launchctl kickstart failed (%d diagnostic bytes)", len(output)), err)
 	}
 	return nil
 }
