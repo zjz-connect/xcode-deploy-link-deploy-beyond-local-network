@@ -1,6 +1,6 @@
 # iOS OTA Architecture
 
-Document revision: `1.3.1-design.1`
+Document revision: `1.3.1-design.2`
 
 Revised: `2026-09-12`
 
@@ -51,15 +51,15 @@ The component name is also the runtime identity:
 - per-user LaunchAgent and plist basename: `lyo-nodus-ios-ota`;
 - default runtime root: `~/Library/Application Support/Lyo Nodus iOS OTA/`;
 - explicit runtime-root override: `LYO_NODUS_IOS_OTA_RUNTIME_ROOT`;
-- native background bundle: `Lyo Nodus iOS OTA.app`, containing that one
-  executable at `Contents/MacOS/lyo-nodus-ios-ota`;
-- bundle identifier: `lyo.nodus.ios.ota`, the slug's hyphens replaced by dots.
+- installed executable: `~/.local/bin/lyo-nodus-ios-ota`.
 
-The bundle supplies `CFBundleName` and `CFBundleDisplayName`; the LaunchAgent
-uses Apple's `AssociatedBundleIdentifiers` key to associate it with the same
-bundle in Login Items. There is no invented LaunchAgent `DisplayName` key,
-wrapper process, second daemon or helper UI. The installer signs and registers
-the bundle but does not activate the service. `RunAtLoad` and `KeepAlive` start
+Follow the existing Lyo Nodus App Server Override pattern: one ordinary signed
+executable, one same-slug plist/Label, and the canonical human name in service
+status output and logs. Do not create an app bundle, association wrapper,
+second daemon, helper UI or invented LaunchAgent `DisplayName` key. macOS may
+show the technical executable name just as it does for Override; do not claim
+a separate system display-name override. Installation does not activate the
+service. `RunAtLoad` and `KeepAlive` start
 the job at bootstrap; no subsequent force-kickstart restarts it a second time.
 
 Activation is a single service release: first verify the installed identity,
@@ -72,6 +72,9 @@ process. An existing explicitly selected runtime/build root may be reused;
 do not duplicate its dependency cache merely to rename a service. No old-name
 alias or compatibility job remains. Record actual paths and both old/new
 installed versions in release acceptance.
+
+The previously proposed app-bundle association is withdrawn before
+implementation at the owner's request; no such bundle was installed.
 
 The superseded executable and LaunchAgent are removed at activation. There is
 no command alias or parallel daemon. Profiles are explicit owner-selected

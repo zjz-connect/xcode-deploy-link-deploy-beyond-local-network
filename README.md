@@ -117,12 +117,13 @@ The deterministic installer downloads the pinned Go toolchain and pinned Link
 Core source, applies the repository patch, and installs the binary under:
 
 ```text
-~/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota
+~/.local/bin/lyo-nodus-ios-ota
 ```
 
-It does not install Go globally. The signed background bundle supplies the
-macOS display name; the LaunchAgent is `lyo-nodus-ios-ota.plist`. There is only
-one daemon executable. `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` selects an explicit
+It does not install Go globally. As with Lyo Nodus App Server Override, the
+ordinary executable and LaunchAgent use `lyo-nodus-ios-ota`, with human-facing
+service name **Lyo Nodus iOS OTA** in status output and logs. There is no app
+bundle or wrapper process. `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` selects an explicit
 existing runtime/build root when required; profiles and credentials stay put.
 
 ### 3. Configure and start the bridge
@@ -132,7 +133,7 @@ below with the RemotePairing identifier, the iPhone's Tailscale IP, and the
 absolute path to its pairing record:
 
 ```sh
-ios_ota="$HOME/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota"
+ios_ota="$HOME/.local/bin/lyo-nodus-ios-ota"
 profile="$HOME/Library/Application Support/Lyo Nodus iOS OTA/iphone.json"
 
 "$ios_ota" configure \
@@ -302,12 +303,13 @@ cd ios-ota
 patch，并将二进制文件安装到：
 
 ```text
-~/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota
+~/.local/bin/lyo-nodus-ios-ota
 ```
 
-它不会在系统中全局安装 Go。macOS 后台项目显示 **Lyo Nodus iOS OTA**，
-LaunchAgent 为 `lyo-nodus-ios-ota.plist`；应用包只包含同一个后台进程，
-不额外创建服务。可用 `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` 明确复用已有
+它不会在系统中全局安装 Go。沿用 App Server Override 模式：可执行文件、
+Label、plist 统一为 `lyo-nodus-ios-ota`，状态输出和日志使用友好名称
+**Lyo Nodus iOS OTA**，不创建应用包或额外服务。macOS 自身可能显示技术名，
+不另做系统显示名覆盖。可用 `LYO_NODUS_IOS_OTA_RUNTIME_ROOT` 明确复用已有
 runtime/build 目录；不迁移现有 profile、配对或定位凭证。
 
 ### 3. 配置并启动 bridge
@@ -316,7 +318,7 @@ runtime/build 目录；不迁移现有 profile、配对或定位凭证。
 identifier、iPhone 的 Tailscale IP，以及 pairing record 的绝对路径：
 
 ```sh
-ios_ota="$HOME/Library/Application Support/Lyo Nodus iOS OTA/Lyo Nodus iOS OTA.app/Contents/MacOS/lyo-nodus-ios-ota"
+ios_ota="$HOME/.local/bin/lyo-nodus-ios-ota"
 profile="$HOME/Library/Application Support/Lyo Nodus iOS OTA/iphone.json"
 
 "$ios_ota" configure \
