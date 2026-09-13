@@ -20,16 +20,17 @@ var tailscaleIPv4 = netip.MustParsePrefix("100.64.0.0/10")
 var tailscaleIPv6 = netip.MustParsePrefix("fd7a:115c:a1e0::/48")
 
 type Config struct {
-	SchemaVersion         int    `json:"schema_version"`
-	DeviceLabel           string `json:"device_label"`
-	RemoteIdentifier      string `json:"remote_identifier"`
-	TargetTailnetIP       string `json:"target_tailnet_ip"`
-	RemotePairingPort     int    `json:"remote_pairing_port"`
-	PairRecordPath        string `json:"pair_record_path"`
-	LocalForwardPort      int    `json:"local_forward_port"`
-	ConnectTimeoutSeconds int    `json:"connect_timeout_seconds"`
-	RetryIntervalSeconds  int    `json:"retry_interval_seconds"`
-	InstallTimeoutSeconds int    `json:"install_timeout_seconds"`
+	Location              *LocationConfig `json:"location,omitempty"`
+	SchemaVersion         int             `json:"schema_version"`
+	DeviceLabel           string          `json:"device_label"`
+	RemoteIdentifier      string          `json:"remote_identifier"`
+	TargetTailnetIP       string          `json:"target_tailnet_ip"`
+	RemotePairingPort     int             `json:"remote_pairing_port"`
+	PairRecordPath        string          `json:"pair_record_path"`
+	LocalForwardPort      int             `json:"local_forward_port"`
+	ConnectTimeoutSeconds int             `json:"connect_timeout_seconds"`
+	RetryIntervalSeconds  int             `json:"retry_interval_seconds"`
+	InstallTimeoutSeconds int             `json:"install_timeout_seconds"`
 }
 
 func DefaultConfig() Config {
@@ -70,6 +71,11 @@ func validateSeconds(name string, value int, minimum int, maximum int) error {
 }
 
 func (c Config) Validate() error {
+	if c.Location != nil {
+		if err := c.Location.validate(); err != nil {
+			return err
+		}
+	}
 	if c.SchemaVersion != SchemaVersion {
 		return coded("profile_invalid", fmt.Sprintf("schema_version must be %d", SchemaVersion), nil)
 	}

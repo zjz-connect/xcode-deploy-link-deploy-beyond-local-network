@@ -2,7 +2,7 @@
 
 Link Core contains software derived from
 [`danielpaulus/go-ios`](https://github.com/danielpaulus/go-ios), pinned by
-Nodus Remote Deploy to an exact upstream commit and modified by the
+iOS OTA to an exact upstream commit and modified by the
 repository-owned downstream patch.
 
 ## MIT License

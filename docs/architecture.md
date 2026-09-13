@@ -1,30 +1,59 @@
-# Nodus Remote Deploy Architecture
+# iOS OTA Architecture
 
-Document revision: `1.2.0-design.3`
+Document revision: `1.3.0-design.1`
 
-Revised: `2026-09-08`
+Revised: `2026-09-12`
 
 ## Decision
 
-Nodus Remote Deploy is one unprivileged, launchd-managed Go daemon on macOS. It owns one
+iOS OTA is one unprivileged, launchd-managed Go daemon on macOS. It owns one
 verified RemotePairing control connection, one TLS-PSK data connection, one
 userspace RSD topology, and serialized app lifecycle requests for one
 configured iPhone. Tailscale supplies stable unicast reachability but is not
 pairing, session, installation, or removal authority.
 
 The CLI is a short-lived client. It communicates only through a profile-scoped,
-owner-only Unix socket. No control API is exposed over TCP.
+owner-only Unix socket. An explicitly configured location-only HTTPS endpoint
+accepts a device-scoped credential on the host Tailnet address. It cannot
+install/remove apps, read files, or invoke arbitrary developer services.
+
+## iOS OTA location extension and naming
+
+The canonical service name becomes iOS OTA, with technical slug `ios-ota`.
+Runtime root, binary, LaunchAgent and environment prefix follow this identity.
+Link Core retains its protocol-library identity and upstream provenance.
+
+The daemon owns one LocationSimulation connection using Link Core's existing
+Instruments API. It uses the same paired tunnel, with fresh RSD identity checks.
+Set/update/clear have bounded deadlines. An unacknowledged set retains its
+requested target as uncertain so shutdown still attempts clear. Request cancellation and phone app
+background suspension do not end an accepted simulation. A five-second refresh
+checks the session. Failure is visible; reconnect never silently reapplies an
+old target. Service shutdown attempts clear before closing the outer tunnel.
+
+The location listener uses TLS 1.3 and only a local Tailnet IPv4 address. A protected
+credential file supplies a certificate and a random device-scoped bearer token.
+`configure-location` exports URL, certificate SHA-256 and token for App import.
+Only GET/PUT/DELETE `/v1/location` are accepted. Credentials and coordinates are
+not logged. Existing profile pairing is reused; no new iPhone VPN is created.
+
+Set acknowledgement, fresh simulated CoreLocation, persistence with another
+app foreground, and fresh real location after clear are distinct evidence.
+WeChat and Xiaohongshu acceptance must be separately observed. No universal
+app acceptance or bypass of simulated-location detection is promised.
 
 The component name is also the runtime identity:
 
-- executable and process: `nodus-remote-deploy`;
-- per-user LaunchAgent: `com.zjz.nodus-remote-deploy`;
-- runtime root: `~/Library/Application Support/Nodus Remote Deploy/`;
-- runtime-root override: `NODUS_REMOTE_DEPLOY_RUNTIME_ROOT`.
+- executable and process: `ios-ota`;
+- per-user LaunchAgent: `ios-ota`;
+- runtime root: `~/Library/Application Support/iOS OTA/`;
+- runtime-root override: `IOS_OTA_RUNTIME_ROOT`.
 
-The superseded executable, LaunchAgent, socket, runtime root and environment
-key are removed at the v1.0.0 cutover. There is no command alias, parallel
-daemon or compatibility path.
+The superseded executable and LaunchAgent are removed at activation. There is
+no command alias or parallel daemon. Profiles are explicit owner-selected
+absolute paths; their adjacent control socket is independent of the binary
+installation directory. Reuse an existing profile in place when other local
+consumers already monitor its socket. This is one configured socket, not an alias.
 
 ## Build and install ownership
 
@@ -34,12 +63,12 @@ daemon or compatibility path.
 | Development signing | Xcode and Apple's signing assets |
 | Bridge reachability | Tailscale plus the configured iPhone Tailnet IP |
 | Pair verification | The configured owner-only RemotePairing record |
-| Warm session | The long-running Nodus Remote Deploy daemon |
+| Warm session | The long-running iOS OTA daemon |
 | App transfer | Streaming zip conduit over the live RSD session |
 | App removal | InstallationProxy for one explicit bundle identifier |
 | Success readback | InstallationProxy bundle presence or absence enumeration |
 
-Nodus Remote Deploy consumes an existing signed `.app`. It does not become an Xcode Run
+iOS OTA consumes an existing signed `.app`. It does not become an Xcode Run
 Destination, select a signing team, modify a project, or weaken iOS signature
 validation.
 
@@ -78,8 +107,8 @@ causes iOS to expose RemotePairing again.
 ## Source and dependency boundary
 
 - Public source mirror:
-  `zjz-connect/xcode-deploy-link-deploy-beyond-local-network`;
-- Git fetch authority: `/srv/contabo/git/deploy-link.git`;
+  `zjz-connect/ios-ota`;
+- Git fetch authority: `/srv/contabo/git/ios-ota.git`;
 - Go toolchain: `1.26.5` for macOS arm64;
 - Link Core upstream: `danielpaulus/go-ios` commit
   `3ebc297691a9e364772aef027744ebc0c49421a5`;
@@ -88,7 +117,7 @@ causes iOS to expose RemotePairing again.
 The installer verifies the Go archive checksum, verifies the exact upstream
 commit, and fails if the patch no longer applies cleanly. Generated dependency
 source, caches, profiles, pairing records, logs, and binaries remain outside
-Git under `~/Library/Application Support/Nodus Remote Deploy/`.
+Git under `~/Library/Application Support/iOS OTA/`.
 
 ## Security invariants
 
@@ -116,7 +145,7 @@ or implicit current-app policy. Callers must treat successful removal as
 irreversible local-data deletion and reinstall the desired signed app
 explicitly.
 
-Source commit `4aef0a7` implements this contract as Nodus Remote Deploy 1.1.0.
+Source commit `4aef0a7` implements this contract as iOS OTA 1.1.0.
 Repository unit tests, race tests, `go vet`, the pinned Link Core `ios`,
 `tunnel`, `installationproxy`, and `zipconduit` tests, and an independent
 versioned binary build passed. At that checkpoint the installed LaunchAgent ran the 1.1.0 binary.
@@ -132,13 +161,13 @@ The canonical identity cutover passed on 2026-08-31 from source commit
 
 - the pinned Link Core package tests, repository unit tests, race tests and
   `go vet` passed;
-- the installed `nodus-remote-deploy` reported version `1.0.0`, the pinned Link
+- the installed `ios-ota` reported version `1.0.0`, the pinned Link
   Core commit and patch digest, and its binary SHA-256 was
   `21d34fd59e5cf8903c3017d67480e08a895b836ed8abc190c99fa5057834baa5`;
 - the schema-4 profile was copied byte-for-byte with mode `0600`; `doctor`
   accepted build metadata, profile, pairing record, Tailnet peer and the live
   RemotePairing listener;
-- `com.zjz.nodus-remote-deploy` acquired generation 1 and became `active` as
+- `ios-ota` acquired generation 1 and became `active` as
   the only loaded deployment job and process;
 - the new daemon reinstalled the exact signed app already present on the phone,
   reached `InstallComplete` and `DataComplete`, performed its own bundle
@@ -178,4 +207,24 @@ gap between a passing build/test and a doctor-rejected version.
 
 Capture discovery revision 1.2.0-design.7: screenshot and XCTest operations obtain an identity-verified fresh RSD snapshot over their existing tunnel before using developer services. The acquisition map is installation bootstrap data, not permanent capture readiness. See remote-capture.md.
 
-Capture preparation revision 1.2.0-design.8 revision 2 adds a run-scoped screenshot-only endpoint for native XCTest gestures. The test owner retains the operation lock; an independently opened Instruments service supplies original PNGs to the signed runner. Tailnet-only bind, random per-run token, exclusive request handling and context cancellation bound the endpoint. Candidate preview8 is prepared but has not replaced or restarted the active service. See remote-capture.md for clock and acceptance rules.
+Capture preparation revision 1.2.0-design.8 revision 2 adds a run-scoped screenshot-only endpoint for native XCTest gestures. The test owner retains the operation lock; an independently opened Instruments service supplies original PNGs to the signed runner. Tailnet-only bind, random per-run token, exclusive request handling and context cancellation bound the endpoint. That preview8 checkpoint was preparation only; the later iOS OTA location release below is now active. See remote-capture.md for clock and acceptance rules.
+
+## iOS OTA 1.3.0 location acceptance, 2026-09-12
+
+The canonical `ios-ota` binary and LaunchAgent are active. The existing explicit
+profile and adjacent owner-only socket were retained in place, preserving the
+local Lyo Nodus status consumer; pairing was not repeated. The old executable
+and LaunchAgent were removed. Both Git authorities now use `ios-ota.git`.
+
+The full pinned dependency, local CLI/session/HTTPS tests, race checks and vet
+passed. Lyo Proxy 0.3.0 (8) was installed before the acceptance run. Its native
+XCTest then passed actual set, fresh simulated CoreLocation, app switching,
+coordinate update, clear and fresh non-simulated CoreLocation. Receipt in the
+Lyo Proxy checkout: `.build/location-host-acceptance-build8/result.json`, one
+passing test and five screenshots, outer generation 1. Screenshots were visually
+inspected. This is not a universal third-party-app acceptance claim.
+
+The host accepts only pinned TLS 1.3 requests from the authenticated client.
+The phone needs a narrowly scoped ATS exception for Tailnet IPv4 because iOS
+17+ otherwise disallows relaxing IP-certificate trust to this private anchor.
+No phone-side VPN configuration is created by location.

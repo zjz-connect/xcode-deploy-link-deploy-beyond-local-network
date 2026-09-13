@@ -22,6 +22,10 @@ type fakeSession struct {
 	uninstall  func(context.Context, string) error
 }
 
+func (s *fakeSession) OpenLocation(context.Context) (locationDriver, error) {
+	return nil, errors.New("location is not configured in this fixture")
+}
+
 func (s *fakeSession) RunTests(ctx context.Context, request TestRunRequest, log io.Writer, attachments string) ([]testmanagerd.TestSuite, error) {
 	if s.runTests != nil {
 		return s.runTests(ctx, request, log, attachments)
@@ -343,18 +347,18 @@ func TestDaemonServeControlSocketLifecycle(t *testing.T) {
 }
 
 func TestPrepareUnixListenerRejectsLiveOwner(t *testing.T) {
-	directory, err := os.MkdirTemp("/tmp", "nodus-remote-deploy-listener-")
+	directory, err := os.MkdirTemp("/tmp", "ios-ota-listener-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(directory) })
-	socketPath := filepath.Join(directory, "nodus-remote-deploy.sock")
+	socketPath := filepath.Join(directory, "ios-ota.sock")
 	listener, err := prepareUnixListener(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	if _, err := prepareUnixListener(socketPath); errorCode(err) != "nodus_remote_deploy_already_running" {
-		t.Fatalf("error = %v, want nodus_remote_deploy_already_running", err)
+	if _, err := prepareUnixListener(socketPath); errorCode(err) != "ios_ota_already_running" {
+		t.Fatalf("error = %v, want ios_ota_already_running", err)
 	}
 }

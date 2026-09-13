@@ -1,4 +1,4 @@
-module github.com/zjz-connect/xcode-deploy-link-deploy-beyond-local-network
+module github.com/zjz-connect/ios-ota
 
 go 1.26.0
 

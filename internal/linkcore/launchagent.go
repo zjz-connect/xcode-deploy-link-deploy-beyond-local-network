@@ -11,7 +11,7 @@ import (
 	"strconv"
 )
 
-const launchAgentLabel = "com.zjz.nodus-remote-deploy"
+const launchAgentLabel = "ios-ota"
 
 func LaunchAgentPath() string {
 	return filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", launchAgentLabel+".plist")
@@ -67,8 +67,8 @@ func InstallLaunchAgent(binaryPath string, profilePath string) error {
 </dict>
 </plist>
 `, launchAgentLabel, xmlEscape(binaryPath), xmlEscape(profilePath),
-		xmlEscape(filepath.Join(logsDirectory, "nodus-remote-deploy.log")),
-		xmlEscape(filepath.Join(logsDirectory, "nodus-remote-deploy.error.log")))
+		xmlEscape(filepath.Join(logsDirectory, "ios-ota.log")),
+		xmlEscape(filepath.Join(logsDirectory, "ios-ota.error.log")))
 	path := LaunchAgentPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return coded("launch_agent_failed", "could not create LaunchAgents directory", err)

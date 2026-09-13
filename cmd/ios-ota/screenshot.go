@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/zjz-connect/xcode-deploy-link-deploy-beyond-local-network/internal/linkcore"
+	"github.com/zjz-connect/ios-ota/internal/linkcore"
 )
 
 func screenshot(arguments []string) error {

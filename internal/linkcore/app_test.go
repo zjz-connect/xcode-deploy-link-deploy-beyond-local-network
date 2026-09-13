@@ -47,7 +47,7 @@ func TestValidateAppAcceptsSignedBundle(t *testing.T) {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>NodusRemoteDeployTest</string>
-<key>CFBundleIdentifier</key><string>one.zjz.nodus-remote-deploy-test</string>
+<key>CFBundleIdentifier</key><string>one.zjz.ios-ota-test</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 </dict></plist>`)
@@ -65,7 +65,7 @@ func TestValidateAppAcceptsSignedBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bundle.BundleIdentifier != "one.zjz.nodus-remote-deploy-test" || bundle.Path != appPath {
+	if bundle.BundleIdentifier != "one.zjz.ios-ota-test" || bundle.Path != appPath {
 		t.Fatalf("bundle = %#v", bundle)
 	}
 }

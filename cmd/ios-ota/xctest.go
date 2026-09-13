@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zjz-connect/xcode-deploy-link-deploy-beyond-local-network/internal/linkcore"
+	"github.com/zjz-connect/ios-ota/internal/linkcore"
 )
 
 type repeatedStrings []string

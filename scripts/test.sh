@@ -25,4 +25,4 @@ module_cache="${cache_directory}/go-mod"
 )
 
 "${candidate_binary}" version
-printf 'Deploy Link tests passed\n'
+printf 'iOS OTA tests passed\n'

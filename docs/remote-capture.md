@@ -34,7 +34,7 @@ increasing this deadline would fix device readiness.
 ## Native test command
 
 ```sh
-nodus-remote-deploy run-tests \
+ios-ota run-tests \
   --profile /absolute/path/to/iphone.json \
   --app-id lyo.swift \
   --runner-id lyo.swift.uitests.xctrunner \
@@ -80,7 +80,7 @@ retain strict parsing of actual dictionaries and required screenshot payloads.
 
 ## Build and activation
 
-`scripts/build.sh` builds only the checkout's `.build/nodus-remote-deploy` and
+`scripts/build.sh` builds only the checkout's `.build/ios-ota` and
 its local Go workspace. `scripts/test.sh` checks the relevant pinned dependency
 packages, module tests, race checks and vet; it never installs or restarts a
 service. `scripts/install.sh` atomically replaces the installed executable.

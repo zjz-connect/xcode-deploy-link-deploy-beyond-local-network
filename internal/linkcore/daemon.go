@@ -26,6 +26,7 @@ const (
 )
 
 type Daemon struct {
+	location    *locationSession
 	config      Config
 	profilePath string
 	socketPath  string
@@ -45,6 +46,7 @@ type Daemon struct {
 }
 
 type sessionHandle interface {
+	OpenLocation(context.Context) (locationDriver, error)
 	Screenshot(context.Context) ([]byte, error)
 	RunTests(context.Context, TestRunRequest, io.Writer, string) ([]testmanagerd.TestSuite, error)
 	Close() error
@@ -58,7 +60,7 @@ func NewDaemon(config Config, profilePath string) (*Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Daemon{
+	daemon := &Daemon{
 		config:      config,
 		profilePath: profilePath,
 		socketPath:  socketPath,
@@ -67,7 +69,15 @@ func NewDaemon(config Config, profilePath string) (*Daemon, error) {
 			return OpenSession(ctx, config)
 		},
 		validateApp: ValidateApp,
-	}, nil
+	}
+	daemon.location = &locationSession{open: func(ctx context.Context) (locationDriver, error) {
+		session := daemon.currentSession()
+		if session == nil {
+			return nil, errors.New("phone tunnel is not active")
+		}
+		return session.OpenLocation(ctx)
+	}}
+	return daemon, nil
 }
 
 func (d *Daemon) Snapshot() Snapshot {
@@ -110,7 +120,7 @@ func (d *Daemon) establish(ctx context.Context) {
 		code := errorCode(err)
 		d.setState(StateWaiting, code)
 		if code != "remote_pairing_cold" {
-			slog.Warn("Nodus Remote Deploy acquisition failed", "errorCode", code)
+			slog.Warn("iOS OTA acquisition failed", "errorCode", code)
 		}
 		return
 	}
@@ -121,7 +131,7 @@ func (d *Daemon) establish(ctx context.Context) {
 	d.lastErrorCode = ""
 	generation := d.generation
 	d.mu.Unlock()
-	slog.Info("Nodus Remote Deploy session active", "generation", generation)
+	slog.Info("iOS OTA session active", "generation", generation)
 }
 
 func (d *Daemon) loseSession(generation uint64, err error) {
@@ -136,10 +146,11 @@ func (d *Daemon) loseSession(generation uint64, err error) {
 	d.lastErrorCode = "session_lost"
 	d.sessionLosses++
 	d.mu.Unlock()
+	d.location.lost()
 	if session != nil {
 		_ = session.Close()
 	}
-	slog.Warn("Nodus Remote Deploy outer tunnel stopped", "generation", generation, "error", err)
+	slog.Warn("iOS OTA outer tunnel stopped", "generation", generation, "error", err)
 }
 
 func waitContext(ctx context.Context, duration time.Duration) bool {
@@ -201,7 +212,7 @@ func (d *Daemon) install(ctx context.Context, appPath string, progress func(int,
 	cancel()
 	if err != nil {
 		d.setState(StateRecovering, "service_unresponsive")
-		slog.Warn("Nodus Remote Deploy install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		slog.Warn("iOS OTA install service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
 		return err
 	}
 	d.mu.Lock()
@@ -225,7 +236,7 @@ func (d *Daemon) uninstall(ctx context.Context, bundleIdentifier string) error {
 	cancel()
 	if err != nil {
 		d.setState(StateRecovering, "service_unresponsive")
-		slog.Warn("Nodus Remote Deploy uninstall service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
+		slog.Warn("iOS OTA uninstall service failed; retaining outer tunnel", "generation", d.Snapshot().Generation, "errorCode", errorCode(err))
 		return err
 	}
 	d.mu.Lock()
@@ -326,6 +337,14 @@ func (d *Daemon) Serve(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	d.cancel = cancel
 	defer cancel()
+	if d.config.Location != nil {
+		server, err := startLocationHTTPS(ctx, *d.config.Location, d.location, func() bool { return d.currentSession() != nil })
+		if err != nil {
+			return err
+		}
+		defer server.Close()
+		go d.location.pulse(ctx)
+	}
 	listener, err := prepareUnixListener(d.socketPath)
 	if err != nil {
 		return err
@@ -339,7 +358,7 @@ func (d *Daemon) Serve(parent context.Context) error {
 		<-ctx.Done()
 		_ = listener.Close()
 	}()
-	slog.Info("Nodus Remote Deploy daemon listening")
+	slog.Info("iOS OTA daemon listening")
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
@@ -351,6 +370,13 @@ func (d *Daemon) Serve(parent context.Context) error {
 		go d.handleConnection(ctx, connection)
 	}
 	d.setState(StateStopping, "")
+	if d.location.snapshot(d.currentSession() != nil).Latitude != nil {
+		cleanup, end := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := d.location.clear(cleanup); err != nil {
+			slog.Warn("iOS OTA location clear was not acknowledged")
+		}
+		end()
+	}
 	d.operationMu.Lock()
 	if session := d.currentSession(); session != nil {
 		_ = session.Close()

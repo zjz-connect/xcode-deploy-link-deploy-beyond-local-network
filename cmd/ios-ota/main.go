@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zjz-connect/xcode-deploy-link-deploy-beyond-local-network/internal/linkcore"
+	"github.com/zjz-connect/ios-ota/internal/linkcore"
 )
 
 const version = linkcore.ModuleVersion
@@ -206,9 +206,31 @@ func launchAgent(arguments []string) error {
 
 func run(arguments []string) error {
 	if len(arguments) == 0 {
-		return errors.New("command required: configure, doctor, serve, status, watch, install, uninstall, stop, screenshot, run-tests, launch-agent, version")
+		return errors.New("command required: configure, configure-location, doctor, serve, status, watch, install, uninstall, stop, screenshot, run-tests, launch-agent, version")
 	}
 	switch arguments[0] {
+	case "configure-location":
+		flags := flag.NewFlagSet("configure-location", flag.ContinueOnError)
+		profile := flags.String("profile", "", "absolute profile path")
+		listen := flags.String("listen", "", "local Tailnet IP and port")
+		output := flags.String("output", "", "new private connection document")
+		if err := flags.Parse(arguments[1:]); err != nil {
+			return err
+		}
+		if err := required(*profile, "--profile"); err != nil {
+			return err
+		}
+		if err := required(*listen, "--listen"); err != nil {
+			return err
+		}
+		if err := required(*output, "--output"); err != nil {
+			return err
+		}
+		if err := linkcore.ConfigureLocation(*profile, *listen, *output); err != nil {
+			return err
+		}
+		emit(map[string]any{"ok": true, "event": "location_configured"})
+		return nil
 	case "run-tests":
 		return runTests(arguments[1:])
 	case "screenshot":

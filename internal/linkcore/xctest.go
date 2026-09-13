@@ -201,7 +201,7 @@ func (d *Daemon) runTests(ctx context.Context, request TestRunRequest) (Response
 		return Response{}, err
 	}
 	defer log.Close()
-	result := TestRunResult{Generation: d.Snapshot().Generation, Transport: "deploy-link-tailnet-rsd", StartedAt: time.Now().UTC(), RequestedTests: request.Tests}
+	result := TestRunResult{Generation: d.Snapshot().Generation, Transport: "ios-ota-tailnet-rsd", StartedAt: time.Now().UTC(), RequestedTests: request.Tests}
 	testCtx, cancel := context.WithTimeout(ctx, time.Duration(request.TimeoutSeconds)*time.Second)
 	defer cancel()
 	result.Suites, err = session.RunTests(testCtx, request, log, attachments)
